@@ -1,0 +1,29 @@
+{
+  "name": "saas-monorepo",
+  "version": "1.0.0",
+  "private": true,
+  "workspaces": [
+    "apps/backend",
+    "apps/worker",
+    "packages/shared",
+    "packages/ai-call"
+  ],
+  "dependencies": {
+    "@nestjs/bullmq": "^11.0.4",
+    "@nestjs/common": "^11.1.14",
+    "@nestjs/core": "^11.1.14",
+    "@nestjs/typeorm": "^11.0.0",
+    "@types/nodemailer": "^7.0.11",
+    "axios": "^1.6.0",
+    "bcryptjs": "^3.0.3",
+    "bullmq": "^5.70.1",
+    "nodemailer": "^8.0.1",
+    "typeorm": "^0.3.28"
+  },
+  "scripts": {
+    "start:worker:dev": "ts-node -r tsconfig-paths/register apps/worker/src/main.ts"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

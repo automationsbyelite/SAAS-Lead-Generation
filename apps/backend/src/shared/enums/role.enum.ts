@@ -1,0 +1,5 @@
+export enum Role {
+    SUPER_ADMIN = 'SUPER_ADMIN',
+    TENANT_OWNER = 'TENANT_OWNER',
+    MEMBER = 'MEMBER',
+}

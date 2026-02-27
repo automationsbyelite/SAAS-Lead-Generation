@@ -1,0 +1,38 @@
+# Dependencies
+node_modules/
+
+# Build output
+dist/
+.next/
+out/
+
+# Environment secrets
+.env
+.env.local
+.env.production
+
+# IDE / Editor
+.vscode/
+.idea/
+*.swp
+*.sln
+*.suo
+
+# OS files
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# Logs
+*.log
+npm-debug.log*
+
+# Debug / temp files
+*.tsbuildinfo
+e2e-error.json
+job-error.json
+
+# Cursor AI / Agent files
+CURSOR_SYSTEM_PROMPT.txt
+PROJECT_ARCHITECTURE_AND_PROTOCOL.txt
+*.session.sql

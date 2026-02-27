@@ -1,0 +1,357 @@
+{
+    "info": {
+        "_postman_id": "d8e3b5a1-7c4f-4d2b-9e8a-1b2c3d4e5f6a",
+        "name": "SaaS Platform API (V2 - True Auth)",
+        "description": "A fresh collection to test the SaaS Platform API natively using the new JWT Authentication system.",
+        "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+    },
+    "item": [
+        {
+            "name": "1. Authentication",
+            "item": [
+                {
+                    "name": "1. Login (Super Admin)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "if (responseJson.access_token) {",
+                                    "    pm.collectionVariables.set(\"jwt_token\", responseJson.access_token);",
+                                    "    pm.collectionVariables.set(\"tenantId\", responseJson.user.tenantId);",
+                                    "    console.log(\"Saved JWT & Tenant ID to collection variables\");",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"master@system.com\",\n  \"password\": \"admin123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/auth/login",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "login"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "2. Register New Tenant",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "if (responseJson.access_token) {",
+                                    "    pm.collectionVariables.set(\"jwt_token\", responseJson.access_token);",
+                                    "    pm.collectionVariables.set(\"tenantId\", responseJson.user.tenantId);",
+                                    "    console.log(\"Registration successful. Saved JWT & Tenant ID to collection variables\");",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"tenantName\": \"Acme Corp Testing\",\n  \"firstName\": \"John\",\n  \"lastName\": \"Doe\",\n  \"email\": \"john@acmecorp.com\",\n  \"password\": \"securepassword123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/auth/register",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "register"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "3. Login (Normal Tenant)",
+                    "event": [
+                        {
+                            "listen": "test",
+                            "script": {
+                                "exec": [
+                                    "const responseJson = pm.response.json();",
+                                    "if (responseJson.access_token) {",
+                                    "    pm.collectionVariables.set(\"jwt_token\", responseJson.access_token);",
+                                    "    pm.collectionVariables.set(\"tenantId\", responseJson.user.tenantId);",
+                                    "    console.log(\"Saved Normal Tenant JWT & Tenant ID to collection variables\");",
+                                    "}"
+                                ],
+                                "type": "text/javascript"
+                            }
+                        }
+                    ],
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"email\": \"john@acmecorp.com\",\n  \"password\": \"securepassword123\"\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/auth/login",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "auth",
+                                "login"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "2. Super Admin Tools",
+            "item": [
+                {
+                    "name": "Enable Modules for Tenant",
+                    "request": {
+                        "method": "PATCH",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"enabledModules\": [\"AI_CALL\", \"EMAIL\", \"SCRAPER\"]\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/tenants/{{tenantId}}/modules",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "tenants",
+                                "{{tenantId}}",
+                                "modules"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "3. Scraper Pipeline",
+            "item": [
+                {
+                    "name": "Create Scraper Job",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"query\": \"Plumbers in California\",\n  \"limit\": 5\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/scraper/jobs",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "scraper",
+                                "jobs"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "4. CRM & Leads",
+            "item": [
+                {
+                    "name": "Get All Leads",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/leads",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "leads"
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        },
+        {
+            "name": "5. Outreach Campaigns",
+            "item": [
+                {
+                    "name": "Create Campaign",
+                    "request": {
+                        "method": "POST",
+                        "header": [
+                            {
+                                "key": "Content-Type",
+                                "value": "application/json",
+                                "type": "text"
+                            }
+                        ],
+                        "body": {
+                            "mode": "raw",
+                            "raw": "{\n  \"name\": \"Plumbers AI Outreach\",\n  \"moduleType\": \"AI_CALL\",\n  \"leadIds\": [\n    \"REPLACE_BEYOND_THIS_WITH_ID\"\n  ]\n}"
+                        },
+                        "url": {
+                            "raw": "{{baseUrl}}/campaigns",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "campaigns"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Get Campaigns",
+                    "request": {
+                        "method": "GET",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/campaigns",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "campaigns"
+                            ]
+                        }
+                    },
+                    "response": []
+                },
+                {
+                    "name": "Start Campaign",
+                    "request": {
+                        "method": "POST",
+                        "header": [],
+                        "url": {
+                            "raw": "{{baseUrl}}/campaigns/:id/start",
+                            "host": [
+                                "{{baseUrl}}"
+                            ],
+                            "path": [
+                                "campaigns",
+                                ":id",
+                                "start"
+                            ],
+                            "variable": [
+                                {
+                                    "key": "id",
+                                    "value": "REPLACE_WITH_CAMPAIGN_ID"
+                                }
+                            ]
+                        }
+                    },
+                    "response": []
+                }
+            ]
+        }
+    ],
+    "auth": {
+        "type": "bearer",
+        "bearer": [
+            {
+                "key": "token",
+                "value": "{{jwt_token}}",
+                "type": "string"
+            }
+        ]
+    },
+    "event": [
+        {
+            "listen": "prerequest",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        },
+        {
+            "listen": "test",
+            "script": {
+                "type": "text/javascript",
+                "exec": [
+                    ""
+                ]
+            }
+        }
+    ],
+    "variable": [
+        {
+            "key": "baseUrl",
+            "value": "http://localhost:3000",
+            "type": "string"
+        },
+        {
+            "key": "jwt_token",
+            "value": "",
+            "type": "string"
+        },
+        {
+            "key": "tenantId",
+            "value": "",
+            "type": "string"
+        }
+    ]
+}
