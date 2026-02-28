@@ -3,4 +3,5 @@ export enum CampaignModuleType {
   EMAIL = 'EMAIL',
   SCRAPER = 'SCRAPER',
   SCRAPER_PRO = 'SCRAPER_PRO',
+  SOCIAL_PUBLISHER = 'SOCIAL_PUBLISHER',
 }

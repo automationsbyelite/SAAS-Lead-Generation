@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import api from "@/lib/api";
 import {
     Search, Building2, Users, Shield, Loader2, Edit3, X,
-    CheckCircle2, Circle, Zap, Package, Phone, Mail, Crown
+    CheckCircle2, Circle, Zap, Package, Phone, Mail, Crown, Share2
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -119,6 +119,7 @@ export default function TenantsPage() {
         AI_CALL: { label: "AI Voice", icon: Phone, color: "text-violet-400", bg: "bg-violet-500/10 border-violet-500/20" },
         EMAIL: { label: "Email", icon: Mail, color: "text-emerald-400", bg: "bg-emerald-500/10 border-emerald-500/20" },
         SCRAPER_PRO: { label: "Scraper Pro", icon: Zap, color: "text-amber-400", bg: "bg-amber-500/10 border-amber-500/20" },
+        SOCIAL_PUBLISHER: { label: "Social Publisher", icon: Share2, color: "text-pink-400", bg: "bg-pink-500/10 border-pink-500/20" },
     };
 
     if (authLoading || isLoading) {
@@ -358,7 +359,7 @@ export default function TenantsPage() {
                             <button onClick={() => setIsModulesModalOpen(false)} className="text-slate-400 hover:text-white transition-colors text-lg">✕</button>
                         </div>
                         <div className="p-6 space-y-3">
-                            {['AI_CALL', 'EMAIL', 'SCRAPER_PRO'].map(mod => {
+                            {['AI_CALL', 'EMAIL', 'SCRAPER_PRO', 'SOCIAL_PUBLISHER'].map(mod => {
                                 const info = moduleLabels[mod];
                                 const isChecked = selectedModules.includes(mod);
                                 return (
@@ -386,10 +387,10 @@ export default function TenantsPage() {
                                         </div>
                                         <div className="flex-1">
                                             <div className="font-medium text-white text-sm">
-                                                {mod === 'AI_CALL' ? 'VAPI AI Voice Agent' : mod === 'EMAIL' ? 'SMTP Email Outreach' : 'Scraper Pro (Uncapped)'}
+                                                {mod === 'AI_CALL' ? 'VAPI AI Voice Agent' : mod === 'EMAIL' ? 'SMTP Email Outreach' : mod === 'SOCIAL_PUBLISHER' ? 'Social Publisher' : 'Scraper Pro (Uncapped)'}
                                             </div>
                                             <div className="text-xs text-slate-500 mt-0.5">
-                                                {mod === 'AI_CALL' ? 'Automated AI cold calls via VAPI' : mod === 'EMAIL' ? 'Bulk email campaigns via SMTP' : 'No lead limits, priority queue'}
+                                                {mod === 'AI_CALL' ? 'Automated AI cold calls via VAPI' : mod === 'EMAIL' ? 'Bulk email campaigns via SMTP' : mod === 'SOCIAL_PUBLISHER' ? 'Multi-platform social media auto-posting' : 'No lead limits, priority queue'}
                                             </div>
                                         </div>
                                         <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${isChecked

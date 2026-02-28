@@ -46,6 +46,7 @@ export class TenantController {
                 CampaignModuleType.SCRAPER_PRO,
                 CampaignModuleType.AI_CALL,
                 CampaignModuleType.EMAIL,
+                CampaignModuleType.SOCIAL_PUBLISHER,
             ];
         }
 

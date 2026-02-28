@@ -11,6 +11,7 @@ import {
     CreditCard,
     Settings,
     Shield,
+    Share2,
     BrainCircuit
 } from "lucide-react";
 import { useAuth } from "../providers/AuthProvider";
@@ -20,6 +21,7 @@ const navigation = [
     { name: "Scraper Engine", href: "/dashboard/scraper", icon: Search },
     { name: "Leads CRM", href: "/dashboard/leads", icon: Users },
     { name: "Campaigns", href: "/dashboard/campaigns", icon: Megaphone },
+    { name: "Social Publisher", href: "/dashboard/social-publisher", icon: Share2 },
     { name: "Billing & Modules", href: "/dashboard/billing", icon: CreditCard },
 ];
 

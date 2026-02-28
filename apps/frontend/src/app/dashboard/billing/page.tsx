@@ -4,7 +4,7 @@ import { useState, useEffect } from "react";
 import api from "@/lib/api";
 import { useAuth } from "@/components/providers/AuthProvider";
 import toast from "react-hot-toast";
-import { CreditCard, CheckCircle2, Bot, Mail, Sparkles, Loader2 } from "lucide-react";
+import { CreditCard, CheckCircle2, Bot, Mail, Sparkles, Loader2, Share2 } from "lucide-react";
 import { motion } from "framer-motion";
 
 interface TenantQuota {
@@ -50,6 +50,7 @@ export default function BillingPage() {
     const hasAI = quota?.enabledModules?.includes("AI_CALL");
     const hasEmail = quota?.enabledModules?.includes("EMAIL");
     const hasScraperPro = quota?.enabledModules?.includes("SCRAPER_PRO");
+    const hasSocial = quota?.enabledModules?.includes("SOCIAL_PUBLISHER");
 
     return (
         <div className="max-w-4xl space-y-8">
@@ -76,7 +77,7 @@ export default function BillingPage() {
 
             <h2 className="text-xl font-bold text-white mt-12 mb-6">Available Upgrade Modules</h2>
 
-            <div className="grid md:grid-cols-3 gap-6">
+            <div className="grid md:grid-cols-2 gap-6">
                 {/* Scraper Pro Module */}
                 <motion.div
                     initial={{ opacity: 0, y: 20 }}
@@ -192,6 +193,49 @@ export default function BillingPage() {
                             }`}
                     >
                         {isRedirecting === "EMAIL" ? <Loader2 className="w-5 h-5 animate-spin" /> : hasEmail ? "Already Activated" : "Purchase for $49/mo"}
+                    </button>
+                </motion.div>
+
+                {/* Social Publisher Module */}
+                <motion.div
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: 0.15 }}
+                    className={`relative p-8 rounded-2xl border ${hasSocial ? 'bg-indigo-900/10 border-indigo-500/30' : 'bg-slate-900 border-white/5'} flex flex-col`}
+                >
+                    {hasSocial && (
+                        <div className="absolute top-4 right-4 px-3 py-1 bg-indigo-500/20 text-indigo-400 text-xs font-bold rounded-full border border-indigo-500/20 flex items-center gap-1">
+                            <Sparkles className="w-3 h-3" /> UNLOCKED
+                        </div>
+                    )}
+                    <div className="w-12 h-12 rounded-xl bg-pink-500/20 flex items-center justify-center text-pink-400 mb-6">
+                        <Share2 className="w-6 h-6" />
+                    </div>
+                    <h3 className="text-2xl font-bold text-white mb-2">Social Publisher</h3>
+                    <p className="text-slate-400 mb-6 text-sm flex-1">
+                        Connect Facebook, Instagram & LinkedIn. Schedule and auto-publish posts from your ReachStack dashboard.
+                    </p>
+                    <div className="space-y-3 mb-8">
+                        <div className="flex items-center gap-2 text-sm text-slate-300">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Multi-platform Publishing
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-300">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500" /> Scheduled Auto-posting
+                        </div>
+                        <div className="flex items-center gap-2 text-sm text-slate-300">
+                            <CheckCircle2 className="w-4 h-4 text-emerald-500" /> OAuth — No Passwords Stored
+                        </div>
+                    </div>
+
+                    <button
+                        onClick={() => handleCheckout("SOCIAL_PUBLISHER")}
+                        disabled={hasSocial || isRedirecting !== null}
+                        className={`w-full py-3 rounded-xl font-bold flex items-center justify-center gap-2 transition-all ${hasSocial
+                            ? 'bg-white/5 text-slate-400 cursor-not-allowed'
+                            : 'bg-indigo-600 hover:bg-indigo-500 text-white shadow-lg shadow-indigo-500/25'
+                            }`}
+                    >
+                        {isRedirecting === "SOCIAL_PUBLISHER" ? <Loader2 className="w-5 h-5 animate-spin" /> : hasSocial ? "Already Activated" : "Purchase for $39/mo"}
                     </button>
                 </motion.div>
             </div>

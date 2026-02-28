@@ -19,6 +19,9 @@ import { CampaignItem } from './modules/campaigns/campaign-item.entity';
 import { TenantQuota } from './modules/quota/tenant-quota.entity';
 import { BillingModule } from './modules/billing/billing.module';
 import { EventsModule } from './events/events.module';
+import { SocialPublisherModule } from './modules/social-publisher/social-publisher.module';
+import { SocialAccount } from './modules/social-publisher/entities/social-account.entity';
+import { SocialPost } from './modules/social-publisher/entities/social-post.entity';
 
 @Module({
   imports: [
@@ -29,7 +32,7 @@ import { EventsModule } from './events/events.module';
       username: process.env.DB_USERNAME || 'postgres',
       password: process.env.DB_PASSWORD || 'postgres',
       database: process.env.DB_DATABASE || 'saas',
-      entities: [Tenant, User, Lead, Campaign, CampaignItem, TenantQuota],
+      entities: [Tenant, User, Lead, Campaign, CampaignItem, TenantQuota, SocialAccount, SocialPost],
       synchronize: process.env.NODE_ENV !== 'production',
     }),
     BullModule.forRoot({
@@ -46,6 +49,7 @@ import { EventsModule } from './events/events.module';
     AuthModule,
     BillingModule,
     EventsModule,
+    SocialPublisherModule,
   ],
 })
 export class AppModule { }
