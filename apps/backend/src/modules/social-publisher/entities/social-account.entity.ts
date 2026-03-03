@@ -1,62 +1,59 @@
-import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    CreateDateColumn,
-    UpdateDateColumn,
-    Index,
-} from 'typeorm';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 
 export enum SocialPlatform {
-    FACEBOOK = 'facebook',
-    INSTAGRAM = 'instagram',
-    LINKEDIN = 'linkedin',
+  FACEBOOK = 'facebook',
+  INSTAGRAM = 'instagram',
+  LINKEDIN = 'linkedin',
 }
 
-@Entity('social_accounts')
-@Index(['tenantId', 'platform'])
-@Index(['tenantId', 'userId'])
+export type SocialAccountDocument = SocialAccount & Document;
+
+@Schema({ timestamps: true, collection: 'social_accounts' })
 export class SocialAccount {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+  @Prop({ type: String, default: uuidv4 })
+  _id: string;
 
-    @Column('uuid')
-    tenantId: string;
+  @Prop({ type: String, required: true, index: true })
+  tenantId: string;
 
-    @Column('uuid')
-    userId: string;
+  @Prop({ type: String, required: true })
+  userId: string;
 
-    @Column({
-        type: 'enum',
-        enum: SocialPlatform,
-    })
-    platform: SocialPlatform;
+  @Prop({ type: String, enum: SocialPlatform, required: true })
+  platform: SocialPlatform;
 
-    /** Platform-specific user/page ID (e.g. Facebook Page ID, Instagram User ID) */
-    @Column()
-    platformId: string;
+  @Prop({ required: true })
+  platformId: string;
 
-    /** Display name (page name, IG username, etc.) */
-    @Column()
-    username: string;
+  @Prop({ required: true })
+  username: string;
 
-    /** OAuth access token — long-lived */
-    @Column('text')
-    accessToken: string;
+  @Prop({ required: true })
+  accessToken: string;
 
-    /** Facebook Page ID — needed for FB posting and IG via FB */
-    @Column({ nullable: true })
-    pageId: string;
+  @Prop({ type: String, default: null })
+  pageId: string;
 
-    @Column({ nullable: true })
-    profilePicture: string;
+  @Prop({ type: String, default: null })
+  profilePicture: string;
 
-    @Column({ default: true })
-    isActive: boolean;
+  @Prop({ default: true })
+  isActive: boolean;
 
-    @CreateDateColumn()
-    createdAt: Date;
-
-    @UpdateDateColumn()
-    updatedAt: Date;
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
+
+export const SocialAccountSchema = SchemaFactory.createForClass(SocialAccount);
+
+SocialAccountSchema.index({ tenantId: 1, platform: 1 });
+SocialAccountSchema.index({ tenantId: 1, userId: 1 });
+
+SocialAccountSchema.virtual('id').get(function () {
+  return this._id;
+});
+SocialAccountSchema.set('toJSON', { virtuals: true });
+SocialAccountSchema.set('toObject', { virtuals: true });

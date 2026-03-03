@@ -1,14 +1,14 @@
 import { Injectable, BadRequestException } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
-import { TenantQuota } from './tenant-quota.entity';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { TenantQuota, TenantQuotaDocument } from './tenant-quota.entity';
 import { CampaignModuleType } from '@shared/enums/campaign-module-type.enum';
 
 @Injectable()
 export class QuotaService {
   constructor(
-    @InjectRepository(TenantQuota)
-    private quotaRepository: Repository<TenantQuota>,
+    @InjectModel(TenantQuota.name)
+    private quotaModel: Model<TenantQuotaDocument>,
   ) {}
 
   async checkQuotaForCampaignStart(
@@ -18,9 +18,7 @@ export class QuotaService {
   ): Promise<void> {
     await this.resetIfNeeded(tenantId, moduleType);
 
-    const quota = await this.quotaRepository.findOne({
-      where: { tenantId, moduleType },
-    });
+    const quota = await this.quotaModel.findOne({ tenantId, moduleType }).lean<TenantQuota>();
 
     if (!quota) {
       throw new BadRequestException(`Quota not configured for module ${moduleType}`);
@@ -33,32 +31,19 @@ export class QuotaService {
     }
   }
 
-  async incrementUsage(
-    tenantId: string,
-    moduleType: CampaignModuleType,
-    count: number,
-  ): Promise<void> {
+  async incrementUsage(tenantId: string, moduleType: CampaignModuleType, count: number): Promise<void> {
     await this.resetIfNeeded(tenantId, moduleType);
 
-    await this.quotaRepository
-      .createQueryBuilder()
-      .update(TenantQuota)
-      .set({
-        usedThisMonth: () => `usedThisMonth + ${count}`,
-      })
-      .where('tenantId = :tenantId', { tenantId })
-      .andWhere('moduleType = :moduleType', { moduleType })
-      .execute();
+    await this.quotaModel.findOneAndUpdate(
+      { tenantId, moduleType },
+      { $inc: { usedThisMonth: count } },
+    );
   }
 
   async resetIfNeeded(tenantId: string, moduleType: CampaignModuleType): Promise<void> {
-    const quota = await this.quotaRepository.findOne({
-      where: { tenantId, moduleType },
-    });
+    const quota = await this.quotaModel.findOne({ tenantId, moduleType }).lean<TenantQuota>();
 
-    if (!quota) {
-      return;
-    }
+    if (!quota) return;
 
     const now = new Date();
     if (quota.resetAt < now) {
@@ -67,12 +52,9 @@ export class QuotaService {
       nextReset.setDate(1);
       nextReset.setHours(0, 0, 0, 0);
 
-      await this.quotaRepository.update(
-        { id: quota.id },
-        {
-          usedThisMonth: 0,
-          resetAt: nextReset,
-        },
+      await this.quotaModel.findOneAndUpdate(
+        { _id: (quota as any)._id },
+        { usedThisMonth: 0, resetAt: nextReset },
       );
     }
   }

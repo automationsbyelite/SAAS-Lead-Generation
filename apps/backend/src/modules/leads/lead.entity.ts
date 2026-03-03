@@ -1,76 +1,72 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  Index,
-} from 'typeorm';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import { LeadSource } from '@shared/enums/lead-source.enum';
 import { LeadStatus } from '@shared/enums/lead-status.enum';
 
-@Entity('leads')
-@Index(['tenantId'])
-@Index(['tenantId', 'status'])
-export class Lead {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+export type LeadDocument = Lead & Document;
 
-  @Column('uuid')
+@Schema({ timestamps: true, collection: 'leads' })
+export class Lead {
+  @Prop({ type: String, default: uuidv4 })
+  _id: string;
+
+  @Prop({ type: String, required: true, index: true })
   tenantId: string;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Prop({ type: String, default: null })
   category: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Prop({ type: String, default: null })
   companyName: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Prop({ type: String, default: null })
   contactName: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Prop({ type: String, default: null })
   phone: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Prop({ type: String, default: null })
   email: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Prop({ type: String, default: null })
   website: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Prop({ type: String, default: null })
   facebook: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Prop({ type: String, default: null })
   linkedin: string | null;
 
-  @Column({ type: 'varchar', nullable: true })
+  @Prop({ type: String, default: null })
   instagram: string | null;
 
-  @Column({
-    type: 'enum',
-    enum: LeadSource,
-  })
+  @Prop({ type: String, enum: LeadSource, required: true })
   source: LeadSource;
 
-  @Column({
-    type: 'enum',
-    enum: LeadStatus,
-    default: LeadStatus.NEW,
-  })
+  @Prop({ type: String, enum: LeadStatus, default: LeadStatus.NEW })
   status: LeadStatus;
 
-  @Column({ type: 'jsonb', nullable: true })
+  @Prop({ type: Object, default: null })
   rawData: Record<string, any> | null;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Prop({ type: Date, default: null })
   lastContactedAt: Date | null;
 
-  @CreateDateColumn()
-  createdAt: Date;
-
-  @UpdateDateColumn()
-  updatedAt: Date;
-
-  @Column({ type: 'timestamp', nullable: true })
+  @Prop({ type: Date, default: null })
   deletedAt: Date | null;
+
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
+
+export const LeadSchema = SchemaFactory.createForClass(Lead);
+
+LeadSchema.index({ tenantId: 1, status: 1 });
+
+LeadSchema.virtual('id').get(function () {
+  return this._id;
+});
+LeadSchema.set('toJSON', { virtuals: true });
+LeadSchema.set('toObject', { virtuals: true });

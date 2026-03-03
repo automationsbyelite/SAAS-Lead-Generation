@@ -1,21 +1,21 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
 import { Job } from 'bullmq';
 import axios from 'axios';
-import { SocialPost, PostStatus } from '../entities/social-post.entity';
-import { SocialAccount, SocialPlatform } from '../entities/social-account.entity';
+import { SocialPost, SocialPostDocument, PostStatus } from '../entities/social-post.entity';
+import { SocialAccount, SocialAccountDocument, SocialPlatform } from '../entities/social-account.entity';
 
 @Processor('social-publisher')
 export class SocialPublisherProcessor extends WorkerHost {
     private readonly logger = new Logger(SocialPublisherProcessor.name);
 
     constructor(
-        @InjectRepository(SocialPost)
-        private postRepo: Repository<SocialPost>,
-        @InjectRepository(SocialAccount)
-        private accountRepo: Repository<SocialAccount>,
+        @InjectModel(SocialPost.name)
+        private postModel: Model<SocialPostDocument>,
+        @InjectModel(SocialAccount.name)
+        private accountModel: Model<SocialAccountDocument>,
     ) {
         super();
     }
@@ -24,118 +24,111 @@ export class SocialPublisherProcessor extends WorkerHost {
         const { postId } = job.data;
         this.logger.log(`Processing social post job: ${postId}`);
 
-        const post = await this.postRepo.findOne({ where: { id: postId } });
+        const post = await this.postModel.findById(postId).lean<SocialPost>();
         if (!post) {
             this.logger.error(`Post not found: ${postId}`);
             return;
         }
 
-        const account = await this.accountRepo.findOne({
-            where: { id: post.socialAccountId, isActive: true },
-        });
+        const account = await this.accountModel
+            .findOne({ _id: (post as any).socialAccountId, isActive: true })
+            .lean<SocialAccount>();
+
         if (!account) {
-            post.status = PostStatus.FAILED;
-            post.errorMessage = 'Associated social account not found or disconnected';
-            await this.postRepo.save(post);
+            await this.postModel.findByIdAndUpdate(postId, {
+                status: PostStatus.FAILED,
+                errorMessage: 'Associated social account not found or disconnected',
+            });
             return;
         }
 
         try {
-            switch (post.platform) {
+            let platformPostId: string | undefined;
+
+            switch ((post as any).platform) {
                 case SocialPlatform.FACEBOOK:
-                    await this.publishToFacebook(post, account);
+                    platformPostId = await this.publishToFacebook(post, account);
                     break;
                 case SocialPlatform.INSTAGRAM:
-                    await this.publishToInstagram(post, account);
+                    platformPostId = await this.publishToInstagram(post, account);
                     break;
                 case SocialPlatform.LINKEDIN:
-                    await this.publishToLinkedin(post, account);
+                    platformPostId = await this.publishToLinkedin(post, account);
                     break;
                 default:
-                    throw new Error(`Unknown platform: ${post.platform}`);
+                    throw new Error(`Unknown platform: ${(post as any).platform}`);
             }
 
-            post.status = PostStatus.POSTED;
-            await this.postRepo.save(post);
-            this.logger.log(`✅ ${post.platform} post ${postId} published successfully!`);
+            await this.postModel.findByIdAndUpdate(postId, {
+                status: PostStatus.POSTED,
+                platformPostId,
+            });
+            this.logger.log(`✅ ${(post as any).platform} post ${postId} published successfully!`);
         } catch (error: any) {
             const errorMsg = error.response?.data?.error?.message || error.message;
-            this.logger.error(`❌ Failed to publish ${post.platform} post ${postId}: ${errorMsg}`);
-            post.status = PostStatus.FAILED;
-            post.errorMessage = errorMsg;
-            await this.postRepo.save(post);
+            this.logger.error(`❌ Failed to publish post ${postId}: ${errorMsg}`);
+            await this.postModel.findByIdAndUpdate(postId, {
+                status: PostStatus.FAILED,
+                errorMessage: errorMsg,
+            });
             throw error;
         }
     }
 
-    // ─── FACEBOOK PUBLISHING ───────────────────────────────────────────
-
-    private async publishToFacebook(post: SocialPost, account: SocialAccount): Promise<void> {
+    private async publishToFacebook(post: SocialPost, account: SocialAccount): Promise<string> {
         const baseUrl = 'https://graph.facebook.com/v18.0';
-
         let fbUrl: string;
         const fbParams: Record<string, string> = {
             access_token: account.accessToken,
-            message: post.caption,
+            message: (post as any).caption,
         };
 
-        if (post.mediaType === 'IMAGE') {
+        if ((post as any).mediaType === 'IMAGE') {
             fbUrl = `${baseUrl}/${account.pageId}/photos`;
-            fbParams.url = post.mediaUrl;
-        } else if (post.mediaType === 'VIDEO' || post.mediaType === 'REELS') {
+            fbParams.url = (post as any).mediaUrl;
+        } else if ((post as any).mediaType === 'VIDEO' || (post as any).mediaType === 'REELS') {
             fbUrl = `${baseUrl}/${account.pageId}/videos`;
-            fbParams.file_url = post.mediaUrl;
-            fbParams.description = post.caption;
+            fbParams.file_url = (post as any).mediaUrl;
+            fbParams.description = (post as any).caption;
         } else {
             fbUrl = `${baseUrl}/${account.pageId}/feed`;
         }
 
         const res = await axios.post(fbUrl, null, { params: fbParams });
-        post.platformPostId = res.data.id || res.data.post_id;
-        this.logger.log(`Facebook post created: ${post.platformPostId}`);
+        const id = res.data.id || res.data.post_id;
+        this.logger.log(`Facebook post created: ${id}`);
+        return id;
     }
 
-    // ─── INSTAGRAM PUBLISHING ──────────────────────────────────────────
-
-    private async publishToInstagram(post: SocialPost, account: SocialAccount): Promise<void> {
-        // Instagram via native login uses graph.instagram.com
-        // Instagram via Facebook login uses graph.facebook.com
+    private async publishToInstagram(post: SocialPost, account: SocialAccount): Promise<string> {
         const useFbGraph = !!account.pageId;
-        const baseUrl = useFbGraph
-            ? 'https://graph.facebook.com/v18.0'
-            : 'https://graph.instagram.com/v18.0';
-        const accountId = useFbGraph ? account.platformId : account.platformId;
+        const baseUrl = useFbGraph ? 'https://graph.facebook.com/v18.0' : 'https://graph.instagram.com/v18.0';
+        const accountId = account.platformId;
 
-        // Step 1: Create media container
-        this.logger.log(`Creating Instagram media container for post ${post.id}...`);
-        const containerUrl = `${baseUrl}/${accountId}/media`;
+        this.logger.log(`Creating Instagram media container for post...`);
         const containerParams: Record<string, string> = {
             access_token: account.accessToken,
-            caption: post.caption,
+            caption: (post as any).caption,
         };
 
-        if (post.mediaType === 'VIDEO' || post.mediaType === 'REELS') {
-            containerParams.video_url = post.mediaUrl;
-            containerParams.media_type = post.mediaType;
+        if ((post as any).mediaType === 'VIDEO' || (post as any).mediaType === 'REELS') {
+            containerParams.video_url = (post as any).mediaUrl;
+            containerParams.media_type = (post as any).mediaType;
         } else {
-            containerParams.image_url = post.mediaUrl;
+            containerParams.image_url = (post as any).mediaUrl;
         }
 
-        const containerRes = await axios.post(containerUrl, null, { params: containerParams });
+        const containerRes = await axios.post(`${baseUrl}/${accountId}/media`, null, { params: containerParams });
         const creationId = containerRes.data.id;
         this.logger.log(`Container created: ${creationId}. Polling status...`);
 
-        // Step 2: Poll until FINISHED
         let isReady = false;
         let attempts = 0;
-        const maxAttempts = 20;
-
-        while (!isReady && attempts < maxAttempts) {
+        while (!isReady && attempts < 20) {
             attempts++;
             const statusRes = await axios.get(`${baseUrl}/${creationId}`, {
                 params: { fields: 'status_code,status', access_token: account.accessToken },
             });
-
             const statusCode = statusRes.data.status_code;
             this.logger.log(`Poll attempt ${attempts}: status = ${statusCode}`);
 
@@ -147,21 +140,16 @@ export class SocialPublisherProcessor extends WorkerHost {
                 await new Promise(r => setTimeout(r, 6000));
             }
         }
-
         if (!isReady) throw new Error('Media container processing timed out');
 
-        // Step 3: Publish
         const publishRes = await axios.post(`${baseUrl}/${accountId}/media_publish`, null, {
             params: { access_token: account.accessToken, creation_id: creationId },
         });
-
-        post.platformPostId = publishRes.data.id;
-        this.logger.log(`Instagram post published: ${post.platformPostId}`);
+        this.logger.log(`Instagram post published: ${publishRes.data.id}`);
+        return publishRes.data.id;
     }
 
-    // ─── LINKEDIN PUBLISHING ───────────────────────────────────────────
-
-    private async publishToLinkedin(post: SocialPost, account: SocialAccount): Promise<void> {
+    private async publishToLinkedin(post: SocialPost, account: SocialAccount): Promise<string> {
         const authHeaders = {
             Authorization: `Bearer ${account.accessToken}`,
             'X-Restli-Protocol-Version': '2.0.0',
@@ -170,81 +158,52 @@ export class SocialPublisherProcessor extends WorkerHost {
         let mediaAssets: any[] = [];
         let shareMediaCategory = 'NONE';
 
-        // If there's a media URL, download the image and upload natively to LinkedIn
-        if (post.mediaUrl) {
-            this.logger.log(`Downloading image from ${post.mediaUrl}...`);
-            const imageRes = await axios.get(post.mediaUrl, { responseType: 'arraybuffer' });
-            const imageBuffer = imageRes.data;
+        if ((post as any).mediaUrl) {
+            this.logger.log(`Downloading image from ${(post as any).mediaUrl}...`);
+            const imageRes = await axios.get((post as any).mediaUrl, { responseType: 'arraybuffer' });
 
-            // Register upload
-            this.logger.log('Registering image upload with LinkedIn...');
             const registerRes = await axios.post(
                 'https://api.linkedin.com/v2/assets?action=registerUpload',
                 {
                     registerUploadRequest: {
                         recipes: ['urn:li:digitalmediaRecipe:feedshare-image'],
                         owner: `urn:li:person:${account.platformId}`,
-                        serviceRelationships: [
-                            {
-                                relationshipType: 'OWNER',
-                                identifier: 'urn:li:userGeneratedContent',
-                            },
-                        ],
+                        serviceRelationships: [{ relationshipType: 'OWNER', identifier: 'urn:li:userGeneratedContent' }],
                     },
                 },
                 { headers: { ...authHeaders, 'Content-Type': 'application/json' } },
             );
 
-            const uploadUrl =
-                registerRes.data.value.uploadMechanism[
-                    'com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'
-                ].uploadUrl;
+            const uploadUrl = registerRes.data.value.uploadMechanism['com.linkedin.digitalmedia.uploading.MediaUploadHttpRequest'].uploadUrl;
             const assetUrn = registerRes.data.value.asset;
 
-            // Upload binary image
-            this.logger.log('Uploading binary image to LinkedIn...');
-            await axios.put(uploadUrl, imageBuffer, {
-                headers: {
-                    Authorization: `Bearer ${account.accessToken}`,
-                    'Content-Type': 'application/octet-stream',
-                },
+            await axios.put(uploadUrl, imageRes.data, {
+                headers: { Authorization: `Bearer ${account.accessToken}`, 'Content-Type': 'application/octet-stream' },
             });
 
             this.logger.log(`Image uploaded! URN: ${assetUrn}`);
             shareMediaCategory = 'IMAGE';
-            mediaAssets = [
-                {
-                    status: 'READY',
-                    media: assetUrn,
-                    title: { text: 'Uploaded Image' },
-                },
-            ];
+            mediaAssets = [{ status: 'READY', media: assetUrn, title: { text: 'Uploaded Image' } }];
         }
 
-        // Create UGC Post
-        this.logger.log('Creating LinkedIn UGC post...');
         const postBody = {
             author: `urn:li:person:${account.platformId}`,
             lifecycleState: 'PUBLISHED',
             specificContent: {
                 'com.linkedin.ugc.ShareContent': {
-                    shareCommentary: { text: post.caption },
+                    shareCommentary: { text: (post as any).caption },
                     shareMediaCategory,
                     media: mediaAssets,
                 },
             },
-            visibility: {
-                'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC',
-            },
+            visibility: { 'com.linkedin.ugc.MemberNetworkVisibility': 'PUBLIC' },
         };
 
-        const publishRes = await axios.post(
-            'https://api.linkedin.com/v2/ugcPosts',
-            postBody,
-            { headers: { ...authHeaders, 'Content-Type': 'application/json' } },
-        );
+        const publishRes = await axios.post('https://api.linkedin.com/v2/ugcPosts', postBody, {
+            headers: { ...authHeaders, 'Content-Type': 'application/json' },
+        });
 
-        post.platformPostId = publishRes.data.id;
-        this.logger.log(`LinkedIn post published: ${post.platformPostId}`);
+        this.logger.log(`LinkedIn post published: ${publishRes.data.id}`);
+        return publishRes.data.id;
     }
 }

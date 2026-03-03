@@ -1,10 +1,10 @@
 import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
+import { InjectModel } from '@nestjs/mongoose';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
-import { Repository } from 'typeorm';
-import { SocialPost, PostStatus, MediaType } from './entities/social-post.entity';
-import { SocialAccount } from './entities/social-account.entity';
+import { Model } from 'mongoose';
+import { SocialPost, SocialPostDocument, PostStatus, MediaType } from './entities/social-post.entity';
+import { SocialAccount, SocialAccountDocument } from './entities/social-account.entity';
 import { CreatePostDto } from './dto/create-post.dto';
 
 @Injectable()
@@ -12,32 +12,28 @@ export class SocialPublisherService {
     private readonly logger = new Logger(SocialPublisherService.name);
 
     constructor(
-        @InjectRepository(SocialPost)
-        private postRepo: Repository<SocialPost>,
-        @InjectRepository(SocialAccount)
-        private accountRepo: Repository<SocialAccount>,
+        @InjectModel(SocialPost.name)
+        private postModel: Model<SocialPostDocument>,
+        @InjectModel(SocialAccount.name)
+        private accountModel: Model<SocialAccountDocument>,
         @InjectQueue('social-publisher')
         private publisherQueue: Queue,
     ) { }
 
     async createPost(tenantId: string, userId: string, dto: CreatePostDto): Promise<SocialPost> {
-        // Verify the account belongs to this user/tenant
-        const account = await this.accountRepo.findOne({
-            where: { id: dto.socialAccountId, tenantId, userId, isActive: true },
-        });
+        const account = await this.accountModel
+            .findOne({ _id: dto.socialAccountId, tenantId, userId, isActive: true })
+            .lean<SocialAccount>();
 
-        if (!account) {
-            throw new NotFoundException('Social account not found or not connected.');
-        }
+        if (!account) throw new NotFoundException('Social account not found or not connected.');
 
-        // Block personal profile posts on Facebook
         if (account.username.includes('(Personal Profile)')) {
             throw new BadRequestException(
                 'Facebook does not allow third-party apps to post to Personal Profiles. Please connect a Facebook Page.',
             );
         }
 
-        const post = this.postRepo.create({
+        const post = new this.postModel({
             tenantId,
             userId,
             socialAccountId: dto.socialAccountId,
@@ -49,19 +45,17 @@ export class SocialPublisherService {
             status: PostStatus.SCHEDULED,
         });
 
-        const savedPost = await this.postRepo.save(post);
+        const savedPost = await post.save();
 
-        // Calculate delay for scheduled posting
         const delay = Math.max(0, new Date(dto.scheduledAt).getTime() - Date.now());
-
         await this.publisherQueue.add(
             'publish-social-post',
-            { postId: savedPost.id, platform: dto.platform },
-            { jobId: savedPost.id, delay, removeOnComplete: true, removeOnFail: false },
+            { postId: savedPost._id, platform: dto.platform },
+            { jobId: savedPost._id, delay, removeOnComplete: true, removeOnFail: false },
         );
 
-        this.logger.log(`Scheduled ${dto.platform} post ${savedPost.id} for tenant ${tenantId} (delay: ${Math.round(delay / 1000)}s)`);
-        return savedPost;
+        this.logger.log(`Scheduled ${dto.platform} post ${savedPost._id} for tenant ${tenantId} (delay: ${Math.round(delay / 1000)}s)`);
+        return savedPost.toObject();
     }
 
     async getPosts(
@@ -69,65 +63,56 @@ export class SocialPublisherService {
         userId: string,
         filters?: { platform?: string; status?: string },
     ): Promise<{ data: SocialPost[]; total: number }> {
-        const where: any = { tenantId, userId };
-        if (filters?.platform) where.platform = filters.platform;
-        if (filters?.status) where.status = filters.status;
+        const query: any = { tenantId, userId };
+        if (filters?.platform) query.platform = filters.platform;
+        if (filters?.status) query.status = filters.status;
 
-        const [data, total] = await this.postRepo.findAndCount({
-            where,
-            relations: ['socialAccount'],
-            order: { scheduledAt: 'DESC' },
-        });
+        const data = await this.postModel.find(query).sort({ scheduledAt: -1 }).lean<SocialPost[]>();
+        // Manually populate socialAccount reference
+        const accounts = await this.accountModel
+            .find({ _id: { $in: data.map(p => (p as any).socialAccountId) } })
+            .lean<SocialAccount[]>();
+        const accountMap = new Map(accounts.map(a => [a._id as string, a]));
+        const enriched = data.map(p => ({ ...p, socialAccount: accountMap.get((p as any).socialAccountId) }));
 
-        return { data, total };
+        return { data: enriched as any, total: enriched.length };
     }
 
     async deletePost(tenantId: string, userId: string, postId: string): Promise<void> {
-        const post = await this.postRepo.findOne({
-            where: { id: postId, tenantId, userId },
-        });
-
+        const post = await this.postModel.findOne({ _id: postId, tenantId, userId }).lean<SocialPost>();
         if (!post) throw new NotFoundException('Post not found');
-        if (post.status === PostStatus.POSTED) {
+        if ((post as any).status === PostStatus.POSTED) {
             throw new BadRequestException('Cannot delete an already published post.');
         }
 
-        await this.postRepo.remove(post);
-        // Attempt to remove job from queue
+        await this.postModel.findByIdAndDelete(postId);
         await this.publisherQueue.remove(postId);
         this.logger.log(`Deleted post ${postId} for tenant ${tenantId}`);
     }
 
     async reschedulePost(tenantId: string, userId: string, postId: string, newDate: Date): Promise<SocialPost> {
-        const post = await this.postRepo.findOne({
-            where: { id: postId, tenantId, userId },
-        });
-
+        const post = await this.postModel.findOne({ _id: postId, tenantId, userId }).lean<SocialPost>();
         if (!post) throw new NotFoundException('Post not found');
-        if (post.status === PostStatus.POSTED) {
+        if ((post as any).status === PostStatus.POSTED) {
             throw new BadRequestException('Cannot reschedule an already published post.');
         }
 
-        post.scheduledAt = newDate;
-        const savedPost = await this.postRepo.save(post);
+        const savedPost = await this.postModel
+            .findByIdAndUpdate(postId, { scheduledAt: newDate }, { new: true })
+            .lean<SocialPost>();
 
         const delay = Math.max(0, newDate.getTime() - Date.now());
-
-        try {
-            // Remove existing job
-            await this.publisherQueue.remove(postId);
-        } catch (e) {
+        try { await this.publisherQueue.remove(postId); } catch (e) {
             this.logger.warn(`Failed to remove old queue job for post ${postId}`);
         }
 
-        // Re-queue with new date
         await this.publisherQueue.add(
             'publish-social-post',
-            { postId: savedPost.id, platform: savedPost.platform },
-            { jobId: savedPost.id, delay, removeOnComplete: true, removeOnFail: false },
+            { postId, platform: (post as any).platform },
+            { jobId: postId, delay, removeOnComplete: true, removeOnFail: false },
         );
 
-        this.logger.log(`Rescheduled post ${postId} to ${newDate.toISOString()} (delay: ${Math.round(delay / 1000)}s)`);
-        return savedPost;
+        this.logger.log(`Rescheduled post ${postId} to ${newDate.toISOString()}`);
+        return savedPost!;
     }
 }

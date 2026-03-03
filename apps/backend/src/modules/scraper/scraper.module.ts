@@ -1,20 +1,17 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
+import { MongooseModule } from '@nestjs/mongoose';
 import { BullModule } from '@nestjs/bullmq';
 import { ScraperController } from './scraper.controller';
 import { ScraperService } from './scraper.service';
-import { Lead } from '../leads/lead.entity';
+import { Lead, LeadSchema } from '../leads/lead.entity';
 import { TenantModule } from '../tenant/tenant.module';
 import { LeadsModule } from '../leads/leads.module';
 import { redisConfig } from '../../config/redis.config';
 
 @Module({
     imports: [
-        TypeOrmModule.forFeature([Lead]),
-        BullModule.registerQueue({
-            name: 'scraper-jobs',
-            connection: redisConfig,
-        }),
+        MongooseModule.forFeature([{ name: Lead.name, schema: LeadSchema }]),
+        BullModule.registerQueue({ name: 'scraper-jobs', connection: redisConfig }),
         TenantModule,
         LeadsModule,
     ],
