@@ -109,4 +109,52 @@ export class CheerioScraperService {
             return '';
         }
     }
+
+    /**
+     * Extracts pure semantic text (Headers, Paragraphs, Meta Descriptions)
+     * optimized specifically for feeding into the LLM Research Agent.
+     */
+    async extractCompanyContext(url: string): Promise<string> {
+        if (!url) return '';
+
+        try {
+            const html = await this.fetchPage(url);
+            if (!html) return '';
+
+            const $ = cheerio.load(html);
+
+            // Remove useless/noisy elements
+            $('script, style, noscript, iframe, svg, nav, footer, header, .nav, .footer, .menu, [role="navigation"]').remove();
+
+            let contextText = '';
+
+            // 1. Grab meta description first (highest value signal)
+            const metaDesc = $('meta[name="description"]').attr('content') || $('meta[property="og:description"]').attr('content');
+            if (metaDesc) {
+                contextText += `META DESCRIPTION: ${metaDesc.trim()}\n\n`;
+            }
+
+            // 2. Grab H1 (Core value prop)
+            const h1 = $('h1').first().text().trim();
+            if (h1) {
+                contextText += `H1 HERO: ${h1}\n\n`;
+            }
+
+            // 3. Grab remaining headings and paragraphs to build out features
+            $('h2, h3, p').each((_, el) => {
+                const text = $(el).text().replace(/\s+/g, ' ').trim();
+                // Filter out tiny snippets (likely buttons/menus that weren't caught) or massive walls of text
+                if (text.length > 20 && text.length < 1000) {
+                    contextText += `${text}\n`;
+                }
+            });
+
+            // Limit to roughly 5000 characters to prevent blowing out the context window
+            // and keep extraction incredibly fast and focused.
+            return contextText.slice(0, 5000);
+        } catch (error) {
+            this.logger.error(`Failed to extract context from ${url}: ${error}`);
+            return '';
+        }
+    }
 }

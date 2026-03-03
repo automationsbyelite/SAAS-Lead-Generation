@@ -4,6 +4,7 @@ import { Repository, In, IsNull } from 'typeorm';
 import { Lead } from './lead.entity';
 import { LeadStatus } from '@shared/enums/lead-status.enum';
 import { CreateLeadDto } from './dto/create-lead.dto';
+import { UpdateLeadDto } from './dto/update-lead.dto';
 
 @Injectable()
 export class LeadsService {
@@ -137,6 +138,19 @@ export class LeadsService {
       lead.lastContactedAt = new Date();
     }
 
+    return this.leadRepository.save(lead);
+  }
+
+  async updateLead(tenantId: string, leadId: string, data: UpdateLeadDto): Promise<Lead> {
+    const lead = await this.leadRepository.findOne({
+      where: { id: leadId, tenantId, deletedAt: IsNull() },
+    });
+
+    if (!lead) {
+      throw new NotFoundException('Lead not found');
+    }
+
+    Object.assign(lead, data);
     return this.leadRepository.save(lead);
   }
 

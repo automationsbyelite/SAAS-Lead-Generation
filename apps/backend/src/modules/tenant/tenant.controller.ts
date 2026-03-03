@@ -11,6 +11,7 @@ import {
     BadRequestException,
 } from '@nestjs/common';
 import { Request } from 'express';
+import { IsArray, IsEnum } from 'class-validator';
 import { TenantService } from './tenant.service';
 import { UserService } from '../user/user.service';
 import { TenantGuard } from '../../common/guards/tenant.guard';
@@ -23,6 +24,8 @@ import { TenantRequest } from '../../common/types/request.types';
 import * as bcrypt from 'bcryptjs';
 
 class UpdateModulesDto {
+    @IsArray()
+    @IsEnum(CampaignModuleType, { each: true })
     enabledModules: CampaignModuleType[];
 }
 

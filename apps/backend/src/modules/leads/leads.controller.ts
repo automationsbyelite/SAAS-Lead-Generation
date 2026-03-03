@@ -21,6 +21,7 @@ import { CreateLeadDto } from './dto/create-lead.dto';
 import { CreateManyLeadsDto } from './dto/create-many-leads.dto';
 import { UpdateLeadStatusDto } from './dto/update-lead-status.dto';
 import { GetLeadsQueryDto } from './dto/get-leads-query.dto';
+import { UpdateLeadDto } from './dto/update-lead.dto';
 
 @Controller('leads')
 @UseGuards(JwtAuthGuard, TenantGuard, RoleGuard)
@@ -55,5 +56,14 @@ export class LeadsController {
   @Delete(':id')
   remove(@Req() req: TenantRequest, @Param('id') id: string) {
     return this.leadsService.softDeleteLead(req.tenantId!, id);
+  }
+
+  @Patch(':id')
+  update(
+    @Req() req: TenantRequest,
+    @Param('id') id: string,
+    @Body() dto: UpdateLeadDto,
+  ) {
+    return this.leadsService.updateLead(req.tenantId!, id, dto);
   }
 }

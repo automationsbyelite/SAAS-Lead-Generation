@@ -5,7 +5,7 @@ import api from "@/lib/api";
 import {
     Loader2, Mail, Phone, ExternalLink, MoreHorizontal, Users,
     Search, Globe, Linkedin, Instagram, Facebook, CheckCircle2,
-    Circle, Trash2, Copy, Tag, ChevronDown, Plus, X
+    Circle, Trash2, Copy, Tag, ChevronDown, Plus, X, Edit2
 } from "lucide-react";
 import toast from "react-hot-toast";
 
@@ -39,6 +39,15 @@ export default function LeadsPage() {
 
     // Add lead form state
     const [newLead, setNewLead] = useState({
+        companyName: "", contactName: "", email: "", phone: "",
+        website: "", category: "", facebook: "", linkedin: "", instagram: ""
+    });
+
+    // Edit lead state
+    const [showEditModal, setShowEditModal] = useState(false);
+    const [isEditing, setIsEditing] = useState(false);
+    const [currentEditLeadId, setCurrentEditLeadId] = useState<string | null>(null);
+    const [editLeadData, setEditLeadData] = useState({
         companyName: "", contactName: "", email: "", phone: "",
         website: "", category: "", facebook: "", linkedin: "", instagram: ""
     });
@@ -144,6 +153,52 @@ export default function LeadsPage() {
             toast.error(error.response?.data?.message || "Failed to add lead");
         } finally {
             setIsAdding(false);
+        }
+    };
+
+    const openEditModal = (lead: Lead) => {
+        setEditLeadData({
+            companyName: lead.companyName || "",
+            contactName: lead.contactName || "",
+            email: lead.email || "",
+            phone: lead.phone || "",
+            website: lead.website || "",
+            category: lead.category || "",
+            facebook: lead.facebook || "",
+            linkedin: lead.linkedin || "",
+            instagram: lead.instagram || ""
+        });
+        setCurrentEditLeadId(lead.id);
+        setShowEditModal(true);
+        setActiveMenu(null);
+    };
+
+    const handleEditLeadSubmit = async (e: React.FormEvent) => {
+        e.preventDefault();
+        if (!editLeadData.companyName.trim() || !currentEditLeadId) {
+            toast.error("Company name is required.");
+            return;
+        }
+        setIsEditing(true);
+        try {
+            await api.patch(`/leads/${currentEditLeadId}`, {
+                companyName: editLeadData.companyName,
+                contactName: editLeadData.contactName || undefined,
+                email: editLeadData.email || undefined,
+                phone: editLeadData.phone || undefined,
+                website: editLeadData.website || undefined,
+                category: editLeadData.category || undefined,
+                facebook: editLeadData.facebook || undefined,
+                linkedin: editLeadData.linkedin || undefined,
+                instagram: editLeadData.instagram || undefined,
+            });
+            toast.success("Lead updated successfully!");
+            setShowEditModal(false);
+            fetchLeads();
+        } catch (error: any) {
+            toast.error(error.response?.data?.message || "Failed to update lead");
+        } finally {
+            setIsEditing(false);
         }
     };
 
@@ -387,6 +442,12 @@ export default function LeadsPage() {
                                                             </a>
                                                         )}
                                                         <button
+                                                            onClick={() => openEditModal(lead)}
+                                                            className="w-full text-left px-4 py-2 text-sm text-slate-300 hover:bg-white/5 flex items-center gap-2 block"
+                                                        >
+                                                            <Edit2 className="w-3.5 h-3.5" /> Edit Lead
+                                                        </button>
+                                                        <button
                                                             onClick={() => handleDelete(lead.id)}
                                                             className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2"
                                                         >
@@ -555,6 +616,155 @@ export default function LeadsPage() {
                                 >
                                     {isAdding ? <Loader2 className="w-4 h-4 animate-spin" /> : <Plus className="w-4 h-4" />}
                                     {isAdding ? "Adding..." : "Add Lead"}
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Lead Modal */}
+            {showEditModal && (
+                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setShowEditModal(false)}>
+                    <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-lg shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+                        {/* Modal Header */}
+                        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 flex items-center justify-center">
+                                    <Edit2 className="w-4 h-4 text-indigo-400" />
+                                </div>
+                                <h3 className="text-base font-semibold text-white">Edit Lead</h3>
+                            </div>
+                            <button onClick={() => setShowEditModal(false)} className="text-slate-400 hover:text-white transition-colors">
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+
+                        {/* Form */}
+                        <form onSubmit={handleEditLeadSubmit}>
+                            <div className="px-6 py-5 space-y-4 max-h-[65vh] overflow-y-auto">
+                                {/* Company & Contact */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Company Info</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <input
+                                            type="text" value={editLeadData.companyName}
+                                            onChange={e => setEditLeadData({ ...editLeadData, companyName: e.target.value })}
+                                            placeholder="Company Name *" required
+                                            className="px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                        />
+                                        <input
+                                            type="text" value={editLeadData.contactName}
+                                            onChange={e => setEditLeadData({ ...editLeadData, contactName: e.target.value })}
+                                            placeholder="Contact Name"
+                                            className="px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                        />
+                                    </div>
+                                </div>
+
+                                {/* Email & Phone */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Contact Details</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="relative">
+                                            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                                            <input
+                                                type="email" value={editLeadData.email}
+                                                onChange={e => setEditLeadData({ ...editLeadData, email: e.target.value })}
+                                                placeholder="Email address"
+                                                className="w-full pl-9 pr-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                            />
+                                        </div>
+                                        <div className="relative">
+                                            <Phone className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                                            <input
+                                                type="text" value={editLeadData.phone}
+                                                onChange={e => setEditLeadData({ ...editLeadData, phone: e.target.value })}
+                                                placeholder="Phone number"
+                                                className="w-full pl-9 pr-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Website & Category */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Additional Info</label>
+                                    <div className="grid grid-cols-2 gap-2">
+                                        <div className="relative">
+                                            <Globe className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                                            <input
+                                                type="text" value={editLeadData.website}
+                                                onChange={e => setEditLeadData({ ...editLeadData, website: e.target.value })}
+                                                placeholder="https://website.com"
+                                                className="w-full pl-9 pr-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                            />
+                                        </div>
+                                        <div className="relative">
+                                            <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                                            <input
+                                                type="text" value={editLeadData.category}
+                                                onChange={e => setEditLeadData({ ...editLeadData, category: e.target.value })}
+                                                placeholder="Category (e.g. Dentist)"
+                                                className="w-full pl-9 pr-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                            />
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Social Links */}
+                                <div>
+                                    <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Social Links (Optional)</label>
+                                    <div className="space-y-2">
+                                        <div className="relative">
+                                            <Linkedin className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-blue-400" />
+                                            <input
+                                                type="text" value={editLeadData.linkedin}
+                                                onChange={e => setEditLeadData({ ...editLeadData, linkedin: e.target.value })}
+                                                placeholder="LinkedIn URL"
+                                                className="w-full pl-9 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                            />
+                                        </div>
+                                        <div className="grid grid-cols-2 gap-2">
+                                            <div className="relative">
+                                                <Facebook className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-blue-500" />
+                                                <input
+                                                    type="text" value={editLeadData.facebook}
+                                                    onChange={e => setEditLeadData({ ...editLeadData, facebook: e.target.value })}
+                                                    placeholder="Facebook URL"
+                                                    className="w-full pl-9 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                                />
+                                            </div>
+                                            <div className="relative">
+                                                <Instagram className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-pink-400" />
+                                                <input
+                                                    type="text" value={editLeadData.instagram}
+                                                    onChange={e => setEditLeadData({ ...editLeadData, instagram: e.target.value })}
+                                                    placeholder="Instagram URL"
+                                                    className="w-full pl-9 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors"
+                                                />
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Footer */}
+                            <div className="px-6 py-4 border-t border-white/5 flex justify-end gap-3">
+                                <button
+                                    type="button"
+                                    onClick={() => setShowEditModal(false)}
+                                    className="px-4 py-2 text-sm text-slate-400 hover:text-white transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    disabled={isEditing || !editLeadData.companyName.trim()}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20 text-sm"
+                                >
+                                    {isEditing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Edit2 className="w-4 h-4" />}
+                                    {isEditing ? "Saving..." : "Save Changes"}
                                 </button>
                             </div>
                         </form>

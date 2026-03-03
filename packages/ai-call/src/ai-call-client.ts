@@ -17,7 +17,7 @@ export class AICallClient {
   private readonly baseUrl: string;
 
   constructor() {
-    this.baseUrl = process.env.VAPI_URL || 'https://api.vapi.ai/call';
+    this.baseUrl = (process.env.VAPI_URL || 'https://api.vapi.ai').replace(/\/call$/, '');
     const apiKey = process.env.VAPI_API_KEY;
 
     if (!apiKey) {
@@ -44,7 +44,7 @@ export class AICallClient {
     const requestBody: any = {
       phoneNumberId: phoneNumberId,
       customer: {
-        number: payload.phone,
+        number: this.formatPhoneNumber(payload.phone),
         name: payload.contactName || payload.companyName || 'Customer',
       },
       ...(payload.metadata && { metadata: payload.metadata }),
@@ -52,13 +52,15 @@ export class AICallClient {
 
     const defaultAssistantId = process.env.VAPI_ASSISTANT_ID;
 
-    // If Custom Prompt is provided, override the assistant instructions
     if (payload.customPrompt) {
-      if (defaultAssistantId && !defaultAssistantId.includes('your_vapi')) {
-        requestBody.assistantId = defaultAssistantId;
-      }
-      requestBody.assistant = {
+      // If we use an existing assistant but want to change the system prompt, VAPI requires
+      // us to put it in assistantOverrides and provide the base model/provider fields again.
+      requestBody.assistantId = defaultAssistantId;
+      requestBody.assistantOverrides = {
+        firstMessage: payload.customPrompt,
         model: {
+          provider: 'openai',
+          model: 'gpt-4o-mini',
           messages: [
             {
               role: 'system',
@@ -76,17 +78,45 @@ export class AICallClient {
     }
 
     try {
-      const response = await this.axiosInstance.post('/call', requestBody);
+      // VAPI uses /call/phone when initiating an outbound call
+      const response = await this.axiosInstance.post('/call/phone', requestBody);
 
-      const callId = response.data?.id || response.data?.callId;
+      const callId = response.data?.id || response.data?.callId || response.data?.orgId;
 
       if (!callId) {
-        throw new Error('Invalid response from VAPI: missing callId');
+        throw new Error('Invalid response from VAPI: missing call tracking ID');
       }
 
       return { callId };
     } catch (error: any) {
-      throw new Error(`Failed to initiate VAPI call: ${error.response?.data?.message || error.message}`);
+      const errorMsg = error.response?.data?.message || error.message;
+      const errorPayload = error.response?.data ? JSON.stringify(error.response.data) : 'No response data';
+      const requestPayload = JSON.stringify(requestBody);
+      throw new Error(`Failed to initiate VAPI call: ${errorMsg} | Payload Sent: ${requestPayload} | Provider Response: ${errorPayload}`);
     }
+  }
+
+  /**
+   * Formats a raw phone string into E.164 (e.g. +14155552671)
+   */
+  private formatPhoneNumber(phone: string): string {
+    // Remove all non-numeric characters except the leading '+'
+    let cleaned = phone.replace(/(?!^\+)[^\d]/g, '');
+
+    // If it doesn't start with '+', assume US country code '+1'
+    if (!cleaned.startsWith('+')) {
+      // If they provided a 10-digit number, prepend +1
+      if (cleaned.length === 10) {
+        cleaned = '+1' + cleaned;
+      } else if (cleaned.length === 11 && cleaned.startsWith('1')) {
+        // If they provided 11 digits starting with 1, just prepend +
+        cleaned = '+' + cleaned;
+      } else {
+        // Fallback for unexpected lengths, just prepend +1 and let VAPI validate
+        cleaned = '+1' + cleaned;
+      }
+    }
+
+    return cleaned;
   }
 }

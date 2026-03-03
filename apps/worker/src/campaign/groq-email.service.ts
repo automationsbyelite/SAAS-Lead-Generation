@@ -15,6 +15,14 @@ export interface EmailGenerationInput {
     ctaText: string;
     ctaLink?: string;
     tone: string;
+    // Agent Intelligence
+    companyProfile?: {
+        coreOffering: string;
+        valueProposition: string;
+        targetAudience: string;
+        uniqueAngle: string;
+        obscureFact?: string;
+    } | null;
 }
 
 export interface GeneratedEmail {
@@ -47,20 +55,40 @@ export class GroqEmailService {
             CASUAL: 'Relaxed and natural, like a quick note from someone who stumbled on their business and had a genuine idea.',
         }[input.tone] || 'Professional and business-like.';
 
-        const prompt = `You are a world-class B2B cold email copywriter. Your emails consistently get 40%+ open rates and 15%+ reply rates. Write a hyper-personalized cold outreach email that feels like it was written by a real human who actually researched the recipient's business.
+        // Agent Intelligence (If the Research Agent found data)
+        const agentContext = input.companyProfile ? `
+CRUCIAL CONTEXT (Provided by our Research Agent):
+- What They Actively Sell/Do: ${input.companyProfile.coreOffering}
+- Their Main Value Prop: ${input.companyProfile.valueProposition}
+- Their Audience: ${input.companyProfile.targetAudience}
+- THE UNIQUE ANGLE (Trigger Event): ${input.companyProfile.uniqueAngle}
+${input.companyProfile.obscureFact ? `- OBSCURE FACT (For P.S. Hook): ${input.companyProfile.obscureFact}` : ''}
+` : '';
+
+        // Clean up the contact name (often it's 'Test' or 'Unknown' from basic form data)
+        let resolvedContactName = input.contactName?.trim();
+        if (resolvedContactName) {
+            const lowerName = resolvedContactName.toLowerCase();
+            if (['test', 'unknown', 'n/a', 'na', 'test name', 'dummy', 'none'].includes(lowerName)) {
+                resolvedContactName = undefined;
+            }
+        }
+
+        const prompt = `You are an elite, world-class B2B cold email copywriter. Your ONLY job is to write a highly detailed, deeply personalized, conversational cold email that connects our offering to their business reality. Your goal is to write a substantial, thoughtful email that proves you have done deep research.
 
 RECIPIENT BUSINESS INTEL:
 - Company Name: ${input.companyName}
-${input.contactName ? `- Decision Maker: ${input.contactName}` : '- Decision Maker: Unknown (address as business owner)'}
+${resolvedContactName ? `- Decision Maker: ${resolvedContactName}` : '- Decision Maker: Unknown (address as the leader or team of the business)'}
 ${input.website ? `- Their Website: ${input.website}` : ''}
 ${input.category ? `- Industry: ${input.category}` : ''}
+${agentContext}
 
 SENDER PROFILE:
 - Name: ${input.senderName}
 - Title: ${input.senderRole}
 - Company: ${input.senderCompany}
 
-VALUE PROPOSITION:
+VALUE PROPOSITION (What we want to pitch):
 - What We Offer: ${input.offering}
 - Their Likely Pain Point: ${input.painPoint}
 - Desired Action: ${input.ctaText}
@@ -69,26 +97,26 @@ ${input.ctaLink ? `- Booking/CTA Link: ${input.ctaLink}` : ''}
 TONE: ${toneGuide}
 
 CRITICAL RULES — follow these EXACTLY:
-1. SUBJECT LINE: Max 6-8 words. Must feel personal, NOT salesy. Reference their company name or industry. Never use words like "opportunity", "exciting", "limited time". Examples of great subjects: "Quick thought about {Company}'s growth", "{Company} + better local visibility?", "Noticed something about {Company}".
-2. GREETING: If contact name is known, use "Hi {FirstName}," — otherwise use "Hi there,". NEVER use "Dear" or "To whom it may concern".
-3. OPENING LINE (crucial): Start with a SPECIFIC observation about their business. Reference their website, their Google presence, their industry position, or something unique. This MUST feel like you actually visited their site. Example: "I was looking at {website} earlier and noticed you've built a solid reputation in {category}."
-4. PAIN POINT BRIDGE: Transition naturally from your observation into the pain point. Don't just state it — frame it as an insight. Example: "One thing I've seen with businesses like yours is that [pain point framed as industry trend]."
-5. VALUE PROPOSITION: Briefly explain how you solve this — 1-2 sentences max. Be specific about outcomes, not features. Use numbers if possible.
-6. CTA: End with a single, low-friction ask. Make it easy to say yes. If there's a link, embed it naturally.
-7. SIGN-OFF: Professional signature with name, title, company. Keep it clean.
-8. LENGTH: Total email body MUST be 80-150 words. No more. Every word must earn its place.
-9. FORMATTING: Use short paragraphs (2-3 sentences max each). Include natural line breaks between paragraphs.
-10. ABSOLUTELY NO: "I hope this email finds you well", "I'm reaching out because", "I wanted to touch base", "synergy", "leverage", "circle back", or any corporate cliché.
+1. SUBJECT LINE: Max 6-8 words. Reference their specific core offering or industry.
+2. GREETING: If a specific Contact Name is provided, use "Hi {FirstName},". If the Contact Name is Unknown, use a professional greeting like "Hi ${input.companyName} team,". Do NOT use fake names.
+3. PARAGRAPH 1 (The Deep Research Hook - 4 to 5 sentences): Prove you spent time studying their business. Give a detailed observation of their specific ${input.companyProfile?.coreOffering || 'services'} and how they serve ${input.companyProfile?.targetAudience || 'their clients'}. Be highly specific. Explain exactly why their approach stands out in the current market.
+4. PARAGRAPH 2 (The Insight & Pain Point - 4 to 5 sentences): Build upon your observation. Discuss the broader industry trends and the specific complexities of scaling their model. Seamlessly transition into the likely ${input.painPoint}, explaining the hidden costs or bottlenecks this causes in detail.
+5. PARAGRAPH 3 (Our Solution & Value - 4 to 5 sentences): Introduce ${input.offering} as the natural solution. Do not just list features; paint a vivid picture of how their daily operations or bottom line will transform. Use descriptive language to explain the mechanics of how our software/service integrates into their workflow.
+6. PARAGRAPH 4 (The Soft Pitch & CTA - 2 sentences): Wrap up your thoughts gracefully. End with a single, low-friction ask: ${input.ctaText}.
+7. SIGN-OFF: Professional signature with name, title, company.
+8. THE P.S. HOOK: If an "OBSCURE FACT" is provided in the context, you MUST add a warm, conversational "P.S." line below the signature about it.
+9. LENGTH & DEPTH ALARM: The email MUST be substantial. It must be at least 250-350 words total. Do NOT write short, 1-sentence paragraphs. Write flowing, comprehensive thoughts.
+10. ABSOLUTELY NO: "I hope this email finds you well", "synergy", "circle back", or generic clichés.
 
-RESPOND IN EXACTLY THIS JSON FORMAT (no markdown, no code blocks, no extra keys):
-{"subject": "your subject line here", "body": "your full email body here with \\n for line breaks between paragraphs"}`;
+RESPOND IN EXACTLY THIS JSON FORMAT:
+{"subject": "your subject line here", "body": "your full email body here with \\n\\n for double line breaks between paragraphs"}`;
 
         try {
             const completion = await this.client.chat.completions.create({
                 messages: [{ role: 'user', content: prompt }],
                 model: this.model,
                 temperature: 0.85,
-                max_tokens: 600,
+                max_tokens: 1500,
                 response_format: { type: 'json_object' },
             });
 

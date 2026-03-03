@@ -5,6 +5,7 @@ import { SocialAccount } from './entities/social-account.entity';
 import { SocialPost } from './entities/social-post.entity';
 import { SocialAccountService } from './social-account.service';
 import { SocialPublisherService } from './social-publisher.service';
+import { AiGeneratorService } from './ai-generator.service';
 import { SocialAccountController } from './social-account.controller';
 import { SocialPublisherController } from './social-publisher.controller';
 import { TenantModule } from '../tenant/tenant.module';
@@ -20,7 +21,7 @@ import { redisConfig } from '../../config/redis.config';
         TenantModule,
     ],
     controllers: [SocialAccountController, SocialPublisherController],
-    providers: [SocialAccountService, SocialPublisherService],
-    exports: [SocialAccountService, SocialPublisherService],
+    providers: [SocialAccountService, SocialPublisherService, AiGeneratorService],
+    exports: [SocialAccountService, SocialPublisherService, AiGeneratorService],
 })
 export class SocialPublisherModule { }

@@ -46,7 +46,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!isLoading) {
             if (!token && !pathname.includes('/login') && !pathname.includes('/register') && pathname !== '/') {
                 router.push('/login');
-            } else if (token && (pathname === '/login' || pathname === '/register' || pathname === '/')) {
+            } else if (token && (pathname === '/login' || pathname === '/register')) {
                 router.push('/dashboard');
             }
         }

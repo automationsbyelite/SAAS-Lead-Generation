@@ -12,6 +12,9 @@ import { CampaignModuleType } from '@shared/enums/campaign-module-type.enum';
 import { AICallClient } from '@ai-call/ai-call-client';
 import { EmailClient } from './email-client';
 import { GroqEmailService } from './groq-email.service';
+import { ResearchAgent } from './agents/research.agent';
+import { CheerioScraperService } from '../modules/scraper/cheerio-scraper.service';
+import { SearchAggregatorService } from '../modules/scraper/search-aggregator.service';
 import Redis from 'ioredis';
 
 const redisPublisher = new Redis({
@@ -36,6 +39,7 @@ export class CampaignProcessor extends WorkerHost {
   private readonly aiCallClient: AICallClient;
   private readonly emailClient: EmailClient;
   private readonly groqEmailService: GroqEmailService;
+  private readonly researchAgent: ResearchAgent;
 
   constructor(
     @InjectRepository(Campaign)
@@ -49,6 +53,11 @@ export class CampaignProcessor extends WorkerHost {
     this.aiCallClient = new AICallClient();
     this.emailClient = new EmailClient();
     this.groqEmailService = new GroqEmailService();
+
+    // In a full DI setup, these would be injected. We manually instantiate here for simplicity as the worker is standalone.
+    const cheerioScraper = new CheerioScraperService();
+    const searchAggregator = new SearchAggregatorService();
+    this.researchAgent = new ResearchAgent(cheerioScraper, searchAggregator);
   }
 
   private sleep(ms: number): Promise<void> {
@@ -170,12 +179,14 @@ export class CampaignProcessor extends WorkerHost {
               throw new Error('Lead phone number is required for AI calls');
             }
 
+            this.logger.log(`📞 [VAPI] Dispatching call to ${lead.phone} for Lead ${lead.id}...`);
             const result = await this.aiCallClient.initiateCall({
               phone: lead.phone,
               contactName: lead.contactName || undefined,
               companyName: lead.companyName || undefined,
               customPrompt: campaign.customPrompt || undefined,
             });
+            this.logger.log(`✅ [VAPI] Call dispatched successfully. Call ID: ${result.callId}`);
             externalRefId = result.callId;
 
           } else if (campaign.moduleType === CampaignModuleType.EMAIL) {
@@ -192,7 +203,15 @@ export class CampaignProcessor extends WorkerHost {
 
             const emailConfig = campaign.emailConfig as any;
 
-            // Generate personalized email via Groq AI
+            // ─── AGENT 1: THE RESEARCHER ───
+            let companyProfile = null;
+            if (lead.website) {
+              this.logger.log(`🕵️ [Pipeline] Agent 1 -> Researching ${lead.companyName} at ${lead.website}`);
+              companyProfile = await this.researchAgent.investigate(lead.website, lead.companyName || 'Unknown');
+            }
+
+            // ─── AGENT 2: THE COPYWRITER ───
+            this.logger.log(`✍️ [Pipeline] Agent 2 -> Drafting hyper-personalized email for ${lead.email}`);
             const generated = await this.groqEmailService.generateEmail({
               companyName: lead.companyName || 'your company',
               contactName: lead.contactName || undefined,
@@ -206,9 +225,10 @@ export class CampaignProcessor extends WorkerHost {
               ctaText: emailConfig?.ctaText || 'Would love to connect.',
               ctaLink: emailConfig?.ctaLink || undefined,
               tone: emailConfig?.tone || 'PROFESSIONAL',
+              companyProfile: companyProfile, // Injected context
             });
 
-            this.logger.log(`📧 Sending email to ${lead.email} | Subject: "${generated.subject}"`);
+            this.logger.log(`📧 [Pipeline] Dispatching email to ${lead.email} | Subject: "${generated.subject}"`);
 
             const result = await this.emailClient.sendEmail({
               to: lead.email,
@@ -253,6 +273,13 @@ export class CampaignProcessor extends WorkerHost {
 
         } catch (error: any) {
           this.logger.error(`Item ${item.id} failed: ${error.message}`);
+
+          if (error.response?.data) {
+            this.logger.error(`[VAPI Response] ${JSON.stringify(error.response.data)}`);
+          } else if (error.stack) {
+            this.logger.error(`[Stack Trace] ${error.stack}`);
+          }
+
           await this.campaignItemRepository.update(
             { id: item.id, tenantId },
             { status: CampaignItemStatus.FAILED },
@@ -277,11 +304,20 @@ export class CampaignProcessor extends WorkerHost {
       }
     }
 
-    // Mark campaign as completed
+    // Fetch up-to-date campaign stats to determine final status
+    const updatedCampaign = await this.campaignRepository.findOne({
+      where: { id: campaignId, tenantId }
+    });
+
+    const finalStatus = updatedCampaign && updatedCampaign.failureCount > 0
+      ? CampaignStatus.FAILED
+      : CampaignStatus.COMPLETED;
+
+    // Mark campaign with final status
     await this.campaignRepository
       .createQueryBuilder()
       .update(Campaign)
-      .set({ status: CampaignStatus.COMPLETED })
+      .set({ status: finalStatus })
       .where('id = :campaignId', { campaignId })
       .andWhere('tenantId = :tenantId', { tenantId })
       .andWhere('status = :status', { status: CampaignStatus.RUNNING })

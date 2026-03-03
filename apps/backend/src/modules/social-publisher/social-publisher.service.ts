@@ -57,7 +57,7 @@ export class SocialPublisherService {
         await this.publisherQueue.add(
             'publish-social-post',
             { postId: savedPost.id, platform: dto.platform },
-            { delay, removeOnComplete: true, removeOnFail: false },
+            { jobId: savedPost.id, delay, removeOnComplete: true, removeOnFail: false },
         );
 
         this.logger.log(`Scheduled ${dto.platform} post ${savedPost.id} for tenant ${tenantId} (delay: ${Math.round(delay / 1000)}s)`);
@@ -93,6 +93,41 @@ export class SocialPublisherService {
         }
 
         await this.postRepo.remove(post);
+        // Attempt to remove job from queue
+        await this.publisherQueue.remove(postId);
         this.logger.log(`Deleted post ${postId} for tenant ${tenantId}`);
+    }
+
+    async reschedulePost(tenantId: string, userId: string, postId: string, newDate: Date): Promise<SocialPost> {
+        const post = await this.postRepo.findOne({
+            where: { id: postId, tenantId, userId },
+        });
+
+        if (!post) throw new NotFoundException('Post not found');
+        if (post.status === PostStatus.POSTED) {
+            throw new BadRequestException('Cannot reschedule an already published post.');
+        }
+
+        post.scheduledAt = newDate;
+        const savedPost = await this.postRepo.save(post);
+
+        const delay = Math.max(0, newDate.getTime() - Date.now());
+
+        try {
+            // Remove existing job
+            await this.publisherQueue.remove(postId);
+        } catch (e) {
+            this.logger.warn(`Failed to remove old queue job for post ${postId}`);
+        }
+
+        // Re-queue with new date
+        await this.publisherQueue.add(
+            'publish-social-post',
+            { postId: savedPost.id, platform: savedPost.platform },
+            { jobId: savedPost.id, delay, removeOnComplete: true, removeOnFail: false },
+        );
+
+        this.logger.log(`Rescheduled post ${postId} to ${newDate.toISOString()} (delay: ${Math.round(delay / 1000)}s)`);
+        return savedPost;
     }
 }

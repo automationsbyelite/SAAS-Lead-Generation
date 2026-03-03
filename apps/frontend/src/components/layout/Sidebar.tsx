@@ -37,11 +37,13 @@ export function Sidebar() {
 
     return (
         <div className="flex h-full w-64 flex-col bg-slate-900 border-r border-white/5">
-            <div className="flex h-16 items-center gap-2.5 px-6 border-b border-white/5">
-                <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 grid place-items-center flex-shrink-0 shadow-lg shadow-indigo-500/20">
-                    <BrainCircuit className="w-4 h-4 text-white" />
-                </div>
-                <span className="font-bold text-lg tracking-tight text-white truncate">Reach<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">Stack</span></span>
+            <div className="flex h-16 items-center px-6 border-b border-white/5">
+                <Link href="/" className="flex items-center gap-2.5">
+                    <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500 to-violet-600 grid place-items-center flex-shrink-0 shadow-lg shadow-indigo-500/20">
+                        <BrainCircuit className="w-4 h-4 text-white" />
+                    </div>
+                    <span className="font-bold text-lg tracking-tight text-white truncate">Reach<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">Stack</span></span>
+                </Link>
             </div>
 
             <div className="flex-1 overflow-y-auto py-4 px-3 space-y-1">

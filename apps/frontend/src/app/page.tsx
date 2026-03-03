@@ -2,9 +2,12 @@
 
 import Link from 'next/link';
 import { motion } from 'framer-motion';
-import { ArrowRight, Bot, Database, Zap, Shield, ChevronRight, Globe2, BarChart3, CheckCircle2, BrainCircuit, Sparkles } from 'lucide-react';
+import { ArrowRight, Bot, Database, Zap, Shield, ChevronRight, Globe2, BarChart3, CheckCircle2, BrainCircuit, Sparkles, LayoutDashboard } from 'lucide-react';
+import { useAuth } from '@/components/providers/AuthProvider';
 
 export default function LandingPage() {
+  const { user, isLoading } = useAuth();
+
   return (
     <div className="min-h-screen bg-slate-950 text-white selection:bg-indigo-500/30 overflow-hidden">
 
@@ -25,12 +28,27 @@ export default function LandingPage() {
             <span className="font-bold text-xl tracking-tight">Reach<span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-violet-400">Stack</span></span>
           </div>
           <div className="flex items-center gap-6">
-            <Link href="/login" className="text-sm font-medium text-slate-300 hover:text-white transition-colors">
-              Sign In
-            </Link>
-            <Link href="/register" className="text-sm font-bold px-6 py-2.5 rounded-full bg-white text-slate-950 hover:bg-slate-200 transition-colors shadow-xl shadow-white/10 hover:shadow-white/20">
-              Start Free Trial
-            </Link>
+            {!isLoading && (
+              user ? (
+                <Link href="/dashboard" className="flex items-center gap-2 group">
+                  <div className="w-9 h-9 rounded-full bg-indigo-500/20 text-indigo-400 flex items-center justify-center font-bold text-sm border border-indigo-500/30 group-hover:bg-indigo-500/40 transition-colors">
+                    {user.firstName?.charAt(0) || user.email.charAt(0).toUpperCase()}
+                  </div>
+                  <span className="text-sm font-bold text-slate-300 group-hover:text-white transition-colors flex items-center gap-1">
+                    Dashboard <ChevronRight className="w-4 h-4 opacity-50 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all" />
+                  </span>
+                </Link>
+              ) : (
+                <>
+                  <Link href="/login" className="text-sm font-medium text-slate-300 hover:text-white transition-colors">
+                    Sign In
+                  </Link>
+                  <Link href="/register" className="text-sm font-bold px-6 py-2.5 rounded-full bg-white text-slate-950 hover:bg-slate-200 transition-colors shadow-xl shadow-white/10 hover:shadow-white/20">
+                    Start Free Trial
+                  </Link>
+                </>
+              )
+            )}
           </div>
         </div>
       </nav>
