@@ -23,7 +23,7 @@ RUN npm install --legacy-peer-deps
 # ─── Development (hot-reload via nest start --watch) ────────
 FROM base AS development
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app ./
 # Manifests & configs
 COPY package.json package-lock.json tsconfig.json ./
 COPY apps/backend/package.json apps/backend/nest-cli.json apps/backend/tsconfig.json ./apps/backend/
@@ -44,7 +44,7 @@ CMD ["nodemon", "--watch", "src", "--ext", "ts", "--exec", "ts-node -r tsconfig-
 # ─── Builder ────────────────────────────────────────────────
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app ./
 COPY package.json package-lock.json tsconfig.json ./
 COPY apps/backend ./apps/backend
 COPY apps/worker/package.json ./apps/worker/

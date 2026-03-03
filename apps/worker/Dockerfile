@@ -20,7 +20,7 @@ RUN npm install --legacy-peer-deps
 # ─── Development (nodemon + ts-node for hot-reload) ─────────
 FROM base AS development
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app ./
 # Manifests & tsconfigs
 COPY package.json package-lock.json tsconfig.json ./
 COPY apps/worker/package.json apps/worker/tsconfig.json apps/worker/tsconfig.build.json ./apps/worker/
@@ -46,7 +46,7 @@ CMD [ \
 # ─── Builder ────────────────────────────────────────────────
 FROM base AS builder
 WORKDIR /app
-COPY --from=deps /app/node_modules ./node_modules
+COPY --from=deps /app ./
 COPY package.json package-lock.json tsconfig.json ./
 COPY apps/worker ./apps/worker
 COPY apps/backend/src ./apps/backend/src
