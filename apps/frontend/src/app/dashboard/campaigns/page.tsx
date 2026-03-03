@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useEffect, useMemo } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import api from "@/lib/api";
-import toast from "react-hot-toast";
+import { toast } from "sonner";
 import { useAuth } from "@/components/providers/AuthProvider";
 import {
-    Loader2, Megaphone, Plus, Play, MoreHorizontal, Building2,
+    Loader2, Megaphone, Plus, Play, MoreVertical, Building2,
     Search, CheckCircle2, Circle, Users, Phone, Mail,
-    ArrowRight, ArrowLeft, Zap, Globe, Trash2, ChevronDown, Filter, Tag
+    ArrowRight, ArrowLeft, Zap, Globe, Trash2, ChevronDown, Tag, PlayCircle, Sparkles
 } from "lucide-react";
 
 interface Campaign {
@@ -33,6 +34,19 @@ interface Lead {
     createdAt: string;
 }
 
+const containerVariants = {
+    hidden: { opacity: 0 },
+    show: {
+        opacity: 1,
+        transition: { staggerChildren: 0.05 }
+    }
+};
+
+const itemVariants = {
+    hidden: { opacity: 0, y: 15 },
+    show: { opacity: 1, y: 0, transition: { type: "spring" as const, stiffness: 300, damping: 24 } }
+};
+
 export default function CampaignsPage() {
     const { user } = useAuth();
     const [campaigns, setCampaigns] = useState<Campaign[]>([]);
@@ -41,7 +55,7 @@ export default function CampaignsPage() {
     const [isCreating, setIsCreating] = useState(false);
 
     // Wizard step control
-    const [wizardStep, setWizardStep] = useState(0); // 0 = closed, 1 = select leads, 2 = configure
+    const [wizardStep, setWizardStep] = useState(0);
 
     // Lead selection
     const [selectedLeadIds, setSelectedLeadIds] = useState<Set<string>>(new Set());
@@ -66,11 +80,8 @@ export default function CampaignsPage() {
     const [emailCtaLink, setEmailCtaLink] = useState("");
     const [emailTone, setEmailTone] = useState("PROFESSIONAL");
 
-    // Campaign actions dropdown
     const [activeDropdown, setActiveDropdown] = useState<string | null>(null);
-    // Campaign status filter
     const [statusFilter, setStatusFilter] = useState<string>("ALL");
-    // SuperAdmin view mode
     const [viewMode, setViewMode] = useState<"mine" | "all">("all");
 
     useEffect(() => {
@@ -93,19 +104,20 @@ export default function CampaignsPage() {
             if (modules.includes("AI_CALL")) setModuleType("AI_CALL");
         } catch (error) {
             console.error("Failed to fetch data", error);
+            toast.error("Network sync failed");
         } finally {
             setIsLoading(false);
         }
     };
 
-    // Lead categories for dropdown
     const leadCategories = useMemo(() => {
         const cats = new Set<string>();
         leads.forEach(l => { if (l.category) cats.add(l.category); });
         return Array.from(cats).sort();
     }, [leads]);
 
-    // Filtered leads for step 1 selector
+    const isSuperAdmin = user?.role === 'SUPER_ADMIN';
+
     const filteredLeads = useMemo(() => {
         let result = leads;
         if (leadSearch) {
@@ -120,21 +132,18 @@ export default function CampaignsPage() {
         if (leadFilter === "with_email") result = result.filter(l => l.email);
         if (leadFilter === "with_phone") result = result.filter(l => l.phone);
         if (leadCategoryFilter !== "ALL") result = result.filter(l => l.category === leadCategoryFilter);
-        return result;
+        return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [leads, leadSearch, leadFilter, leadCategoryFilter]);
 
-    // Filtered campaigns
-    const isSuperAdmin = user?.role === 'SUPER_ADMIN';
     const filteredCampaigns = useMemo(() => {
         let result = campaigns;
-        // SuperAdmin view separation
         if (isSuperAdmin && viewMode === "mine" && user?.tenantId) {
             result = result.filter(c => c.tenantId === user.tenantId);
         } else if (isSuperAdmin && viewMode === "all" && user?.tenantId) {
             result = result.filter(c => c.tenantId !== user.tenantId);
         }
         if (statusFilter !== "ALL") result = result.filter(c => c.status === statusFilter);
-        return result;
+        return result.sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime());
     }, [campaigns, statusFilter, viewMode, isSuperAdmin, user?.tenantId]);
 
     const toggleLead = (id: string) => {
@@ -164,10 +173,7 @@ export default function CampaignsPage() {
 
     const handleCreateCampaign = async (e: React.FormEvent) => {
         e.preventDefault();
-        if (selectedLeadIds.size === 0) {
-            toast.error("Select at least one lead to create a campaign.");
-            return;
-        }
+        if (selectedLeadIds.size === 0) return toast.error("Select at least one lead infrastructure to target.");
         setIsCreating(true);
         try {
             await api.post("/campaigns", {
@@ -186,11 +192,11 @@ export default function CampaignsPage() {
                 } : undefined,
                 leadIds: Array.from(selectedLeadIds)
             });
-            toast.success("Campaign drafted successfully!");
+            toast.success("Campaign framework initialized");
             setWizardStep(0);
             fetchData();
         } catch (error: any) {
-            toast.error(error.response?.data?.message || "Failed to create campaign");
+            toast.error(error.response?.data?.message || "Failed to structure campaign");
         } finally {
             setIsCreating(false);
         }
@@ -199,31 +205,23 @@ export default function CampaignsPage() {
     const handleStartCampaign = async (id: string) => {
         try {
             await api.post(`/campaigns/${id}/start`);
-            toast.success("Campaign execution started!");
+            toast.success("Outbound sequence invoked");
             setActiveDropdown(null);
             fetchData();
         } catch (error: any) {
-            toast.error(error.response?.data?.message || "Failed to start campaign");
+            toast.error(error.response?.data?.message || "Execution failed");
         }
     };
 
     const handleDeleteCampaign = async (id: string) => {
         try {
             await api.delete(`/campaigns/${id}`);
-            toast.success("Campaign deleted.");
+            toast.success("Campaign sequence purged");
             setActiveDropdown(null);
             fetchData();
         } catch (error: any) {
-            toast.error(error.response?.data?.message || "Failed to delete campaign");
+            toast.error(error.response?.data?.message || "Purge failed");
         }
-    };
-
-    const statusColors: Record<string, string> = {
-        DRAFT: "bg-slate-700/50 text-slate-300 border-slate-600",
-        IN_PROGRESS: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-        RUNNING: "bg-blue-500/10 text-blue-400 border-blue-500/30",
-        COMPLETED: "bg-emerald-500/10 text-emerald-400 border-emerald-500/30",
-        FAILED: "bg-red-500/10 text-red-400 border-red-500/30",
     };
 
     const statCounts = useMemo(() => ({
@@ -235,498 +233,465 @@ export default function CampaignsPage() {
 
     if (isLoading) {
         return (
-            <div className="flex items-center justify-center h-64">
-                <Loader2 className="w-8 h-8 animate-spin text-indigo-400" />
+            <div className="flex items-center justify-center h-[60vh]">
+                <div className="relative">
+                    <div className="w-12 h-12 rounded-full border-2 border-indigo-500/20" />
+                    <div className="w-12 h-12 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin absolute inset-0" />
+                </div>
             </div>
         );
     }
 
     return (
-        <div className="space-y-6 max-w-full">
+        <motion.div variants={containerVariants} initial="hidden" animate="show" className="space-y-6 max-w-full pb-10">
             {/* Header */}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <motion.div variants={itemVariants} className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
                 <div>
-                    <h1 className="text-3xl font-bold tracking-tight">Campaigns</h1>
-                    <p className="text-slate-400 mt-1">Design, target, and launch outbound sequences to your scraped leads.</p>
+                    <h1 className="text-3xl font-bold tracking-tight text-white">Outbound <span className="text-gradient">Campaigns</span></h1>
+                    <p className="text-slate-400 mt-1">Design, target, and launch AI sequences to your scraped prospects.</p>
                 </div>
                 <button
                     onClick={openWizard}
-                    className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl transition-all shadow-lg shadow-indigo-500/20 hover:shadow-indigo-500/30"
+                    className="glass-button flex items-center gap-2 px-5 py-2.5 font-bold rounded-xl shadow-[0_0_20px_rgba(99,102,241,0.2)] border-indigo-500/30 text-indigo-100"
                 >
-                    <Plus className="w-4 h-4" /> New Campaign
+                    <Plus className="w-4 h-4 text-indigo-400" /> New Campaign
                 </button>
-            </div>
+            </motion.div>
 
             {/* Stat Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
+            <motion.div variants={itemVariants} className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {[
-                    { label: "Total Campaigns", value: statCounts.total, icon: Megaphone, color: "text-slate-400" },
-                    { label: "Drafts", value: statCounts.draft, icon: Circle, color: "text-amber-400" },
-                    { label: "Running", value: statCounts.running, icon: Zap, color: "text-blue-400" },
-                    { label: "Completed", value: statCounts.completed, icon: CheckCircle2, color: "text-emerald-400" },
+                    { label: "Total Campaigns", value: statCounts.total, icon: Megaphone, color: "text-slate-400", bg: "bg-slate-500/10", shadow: "shadow-slate-500/20" },
+                    { label: "Drafts", value: statCounts.draft, icon: Circle, color: "text-amber-400", bg: "bg-amber-500/10", shadow: "shadow-amber-500/20" },
+                    { label: "Running", value: statCounts.running, icon: Zap, color: "text-blue-400", bg: "bg-blue-500/10", shadow: "shadow-blue-500/20" },
+                    { label: "Completed", value: statCounts.completed, icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/10", shadow: "shadow-emerald-500/20" },
                 ].map((stat) => (
-                    <div key={stat.label} className="bg-slate-900 border border-white/5 rounded-xl p-4 flex items-center gap-3">
-                        <div className={`p-2 rounded-lg bg-white/5 ${stat.color}`}>
-                            <stat.icon className="w-5 h-5" />
+                    <motion.div key={stat.label} className="glass-card p-5 border-white/5 relative overflow-hidden group">
+                        <div className={`absolute top-0 right-0 w-24 h-24 bg-gradient-to-br from-white/5 to-transparent rounded-full blur-xl -mr-8 -mt-8 transition-transform group-hover:scale-150 duration-700`} />
+                        <div className="flex items-center gap-4 relative z-10">
+                            <div className={`p-3 rounded-xl ${stat.bg} group-hover:${stat.shadow} transition-shadow duration-300`}>
+                                <stat.icon className={`w-5 h-5 ${stat.color}`} />
+                            </div>
+                            <div>
+                                <div className="text-2xl font-bold text-white tracking-tight">{stat.value}</div>
+                                <div className="text-xs font-semibold uppercase tracking-wider text-slate-400 mt-0.5">{stat.label}</div>
+                            </div>
                         </div>
-                        <div>
-                            <div className="text-2xl font-bold text-white">{stat.value}</div>
-                            <div className="text-xs text-slate-500">{stat.label}</div>
-                        </div>
-                    </div>
+                    </motion.div>
                 ))}
-            </div>
+            </motion.div>
 
-            {/* SuperAdmin View Toggle */}
-            {isSuperAdmin && (
-                <div className="flex items-center gap-1 bg-slate-900 border border-white/5 rounded-xl p-1 w-fit">
-                    <button
-                        onClick={() => setViewMode("mine")}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${viewMode === "mine"
-                            ? "bg-indigo-600 text-white shadow-md"
-                            : "text-slate-400 hover:text-white"
-                            }`}
-                    >
-                        🛡️ My Campaigns
-                    </button>
-                    <button
-                        onClick={() => setViewMode("all")}
-                        className={`px-4 py-2 text-sm font-medium rounded-lg transition-all ${viewMode === "all"
-                            ? "bg-indigo-600 text-white shadow-md"
-                            : "text-slate-400 hover:text-white"
-                            }`}
-                    >
-                        🏢 All Tenants
-                    </button>
+            {/* Action Bar (Filters + SuperAdmin Toggle) */}
+            <motion.div variants={itemVariants} className="flex flex-col lg:flex-row gap-4 items-start lg:items-center justify-between">
+                <div className="flex flex-wrap items-center gap-2">
+                    {["ALL", "DRAFT", "RUNNING", "COMPLETED", "FAILED"].map(s => (
+                        <button
+                            key={s}
+                            onClick={() => setStatusFilter(s)}
+                            className={`px-4 py-2 text-[11px] font-bold uppercase tracking-wider rounded-xl border transition-all duration-300 ${statusFilter === s
+                                ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40 shadow-[0_0_15px_rgba(99,102,241,0.2)]"
+                                : "bg-slate-950/50 backdrop-blur-sm text-slate-400 border-white/5 hover:border-white/20 hover:text-slate-200"
+                                }`}
+                        >
+                            {s === "ALL" ? "All Frameworks" : s.replace("_", " ")}
+                        </button>
+                    ))}
                 </div>
-            )}
 
-            {/* Status Filter */}
-            <div className="flex items-center gap-2 flex-wrap">
-                {["ALL", "DRAFT", "RUNNING", "COMPLETED", "FAILED"].map(s => (
-                    <button
-                        key={s}
-                        onClick={() => setStatusFilter(s)}
-                        className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-all ${statusFilter === s
-                            ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40"
-                            : "bg-slate-900 text-slate-400 border-white/5 hover:border-white/10"
-                            }`}
-                    >
-                        {s === "ALL" ? "All Statuses" : s.replace("_", " ")}
-                    </button>
-                ))}
-            </div>
+                {isSuperAdmin && (
+                    <div className="flex items-center gap-1 glass-input p-1">
+                        <button onClick={() => setViewMode("mine")} className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${viewMode === "mine" ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20" : "text-slate-400 hover:text-white"}`}>🛡️ My Engine</button>
+                        <button onClick={() => setViewMode("all")} className={`px-4 py-1.5 text-xs font-bold uppercase tracking-wider rounded-lg transition-all ${viewMode === "all" ? "bg-indigo-600 text-white shadow-md shadow-indigo-500/20" : "text-slate-400 hover:text-white"}`}>🏢 All Tenants</button>
+                    </div>
+                )}
+            </motion.div>
 
-            {/* Campaign List */}
-            <div className="bg-slate-900 border border-white/5 rounded-2xl overflow-hidden shadow-xl">
-                <div className="overflow-x-auto">
-                    <table className="w-full text-left text-sm whitespace-nowrap">
-                        <thead className="bg-slate-950/50 border-b border-white/5 text-slate-400">
-                            <tr>
-                                <th className="px-6 py-4 font-medium">Campaign</th>
-                                <th className="px-6 py-4 font-medium">Type</th>
-                                <th className="px-6 py-4 font-medium">Leads</th>
-                                {user?.role === 'SUPER_ADMIN' && <th className="px-6 py-4 font-medium">Tenant</th>}
-                                <th className="px-6 py-4 font-medium">Status</th>
-                                <th className="px-6 py-4 font-medium text-right">Actions</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-white/5">
-                            {filteredCampaigns.length === 0 ? (
-                                <tr>
-                                    <td colSpan={6} className="px-6 py-16 text-center text-slate-400">
-                                        <div className="w-16 h-16 bg-slate-800 rounded-full flex items-center justify-center mx-auto mb-4">
-                                            <Megaphone className="w-8 h-8 text-slate-600" />
-                                        </div>
-                                        <p className="font-medium text-white mb-1">No campaigns yet</p>
-                                        <p className="text-sm">Click &quot;New Campaign&quot; to create your first outbound sequence.</p>
-                                    </td>
-                                </tr>
-                            ) : (
-                                filteredCampaigns.map(campaign => (
-                                    <tr key={campaign.id} className="hover:bg-white/[0.02] transition-colors group">
-                                        <td className="px-6 py-4">
-                                            <div className="font-medium text-white">{campaign.name}</div>
-                                            <div className="text-slate-500 text-xs mt-0.5">
-                                                {campaign.customPrompt ? "🤖 Custom Prompt" : "Default Mode"} · {new Date(campaign.createdAt).toLocaleDateString()}
-                                            </div>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium border ${campaign.moduleType === "AI_CALL"
-                                                ? "bg-violet-500/10 text-violet-400 border-violet-500/20"
-                                                : "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                                                }`}>
-                                                {campaign.moduleType === "AI_CALL" ? <Phone className="w-3 h-3" /> : <Mail className="w-3 h-3" />}
-                                                {campaign.moduleType === "AI_CALL" ? "AI Call" : "Email"}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4">
-                                            <span className="flex items-center gap-1.5 text-slate-300 text-xs">
-                                                <Users className="w-3.5 h-3.5 text-indigo-400" />
-                                                {campaign.totalItems ?? "—"}
-                                            </span>
-                                        </td>
-                                        {user?.role === 'SUPER_ADMIN' && (
+            {/* Content Display (Desktop Table + Mobile Cards) */}
+            <motion.div variants={itemVariants} className="glass-panel rounded-2xl">
+                {filteredCampaigns.length === 0 ? (
+                    <div className="px-6 py-20 text-center">
+                        <div className="w-20 h-20 bg-white/5 rounded-3xl border border-white/10 flex items-center justify-center mx-auto mb-6 shadow-2xl">
+                            <Megaphone className="w-10 h-10 text-slate-600" />
+                        </div>
+                        <p className="text-xl font-bold text-white mb-2 tracking-tight">System idle.</p>
+                        <p className="text-sm text-slate-400 max-w-sm mx-auto">
+                            No campaigns detected in the current matrix. Initiate a new sequence to blast your prospects.
+                        </p>
+                    </div>
+                ) : (
+                    <>
+                        {/* Desktop Table View */}
+                        <div className="hidden lg:block overflow-x-auto">
+                            <table className="w-full text-left text-sm whitespace-nowrap">
+                                <thead className="bg-slate-950/50 border-b border-white/5 text-slate-400">
+                                    <tr>
+                                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider">Campaign Identity</th>
+                                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider">Vector Type</th>
+                                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider">Target Mass</th>
+                                        {user?.role === 'SUPER_ADMIN' && <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider">Tenant Node</th>}
+                                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider">Execution State</th>
+                                        <th className="px-6 py-4 text-xs font-bold uppercase tracking-wider text-right">Overrides</th>
+                                    </tr>
+                                </thead>
+                                <tbody className="divide-y divide-white/5">
+                                    {filteredCampaigns.map(campaign => (
+                                        <tr key={campaign.id} className="hover:bg-white/[0.03] transition-colors group cursor-default">
                                             <td className="px-6 py-4">
-                                                <div className="flex items-center gap-1.5 text-slate-400 text-xs font-mono">
-                                                    <Building2 className="w-3 h-3 text-indigo-400" />
-                                                    {campaign.tenantId?.split("-")[0]}
+                                                <div className="font-bold text-white text-base group-hover:text-indigo-200 transition-colors uppercase tracking-tight">{campaign.name}</div>
+                                                <div className="font-medium text-slate-500 text-[11px] mt-1 flex items-center gap-1.5 uppercase tracking-wider">
+                                                    {campaign.customPrompt ? <span className="text-amber-400">Custom Neural Prompt</span> : "Standard Vector"} · {new Date(campaign.createdAt).toLocaleDateString()}
                                                 </div>
                                             </td>
-                                        )}
-                                        <td className="px-6 py-4">
-                                            <span className={`inline-flex items-center px-2.5 py-1 rounded-lg text-xs font-medium border ${statusColors[campaign.status] || statusColors.DRAFT}`}>
-                                                {campaign.status === "RUNNING" || campaign.status === "IN_PROGRESS" ? (
-                                                    <Loader2 className="w-3 h-3 animate-spin mr-1.5" />
-                                                ) : null}
-                                                {campaign.status}
-                                            </span>
-                                        </td>
-                                        <td className="px-6 py-4 text-right">
-                                            <div className="relative inline-block">
-                                                <div className="flex items-center gap-2">
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] font-bold uppercase tracking-wider border ${campaign.moduleType === "AI_CALL" ? "bg-violet-500/10 text-violet-400 border-violet-500/30 shadow-[0_0_10px_rgba(139,92,246,0.1)]" : "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.1)]"
+                                                    }`}>
+                                                    {campaign.moduleType === "AI_CALL" ? <Phone className="w-3 h-3" /> : <Mail className="w-3 h-3" />}
+                                                    {campaign.moduleType === "AI_CALL" ? "Voice AI" : "Email AI"}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4">
+                                                <span className="flex items-center gap-1.5 text-slate-300 text-xs font-bold bg-indigo-500/10 border border-indigo-500/20 px-2.5 py-1 rounded-lg w-fit">
+                                                    <Users className="w-3.5 h-3.5 text-indigo-400" />
+                                                    {campaign.totalItems ?? "—"} Entities
+                                                </span>
+                                            </td>
+                                            {user?.role === 'SUPER_ADMIN' && (
+                                                <td className="px-6 py-4">
+                                                    <div className="flex items-center gap-1.5 text-slate-400 text-xs font-mono font-bold">
+                                                        <Building2 className="w-3.5 h-3.5 text-indigo-400" />
+                                                        {campaign.tenantId?.split("-")[0]}
+                                                    </div>
+                                                </td>
+                                            )}
+                                            <td className="px-6 py-4">
+                                                <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[10px] uppercase tracking-wider font-bold border ${campaign.status === "DRAFT" ? "bg-slate-800 text-slate-400 border-slate-700" :
+                                                    campaign.status === "RUNNING" || campaign.status === "IN_PROGRESS" ? "bg-blue-500/10 text-blue-400 border-blue-500/30 shadow-[0_0_10px_rgba(59,130,246,0.2)]" :
+                                                        campaign.status === "COMPLETED" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30 shadow-[0_0_10px_rgba(16,185,129,0.2)]" :
+                                                            "bg-red-500/10 text-red-400 border-red-500/30"
+                                                    }`}>
+                                                    {(campaign.status === "RUNNING" || campaign.status === "IN_PROGRESS") && <Loader2 className="w-3 h-3 animate-spin" />}
+                                                    {campaign.status}
+                                                </span>
+                                            </td>
+                                            <td className="px-6 py-4 text-right relative">
+                                                <div className="flex justify-end gap-2">
                                                     {campaign.status === "DRAFT" && (
-                                                        <button
-                                                            onClick={() => handleStartCampaign(campaign.id)}
-                                                            className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors font-medium border border-emerald-500/20 text-xs"
-                                                        >
-                                                            <Play className="w-3 h-3" /> Execute
+                                                        <button onClick={() => handleStartCampaign(campaign.id)} className="flex items-center gap-1.5 px-3 py-1.5 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-lg transition-colors font-bold border border-emerald-500/30 text-[10px] uppercase tracking-wider shadow-[0_0_10px_rgba(16,185,129,0.15)] group/exec">
+                                                            <PlayCircle className="w-3.5 h-3.5 group-hover/exec:scale-110 transition-transform" /> Execute Protocol
                                                         </button>
                                                     )}
-                                                    <button
-                                                        onClick={() => setActiveDropdown(activeDropdown === campaign.id ? null : campaign.id)}
-                                                        className="p-2 text-slate-400 hover:text-white transition-colors rounded-lg hover:bg-white/5"
-                                                    >
-                                                        <MoreHorizontal className="w-4 h-4" />
+                                                    <button onClick={() => setActiveDropdown(activeDropdown === campaign.id ? null : campaign.id)} className="p-1.5 text-slate-400 hover:text-white transition-colors rounded-lg bg-white/5 hover:bg-white/10 border border-white/5 hover:border-white/20">
+                                                        <MoreVertical className="w-4 h-4" />
                                                     </button>
                                                 </div>
                                                 {activeDropdown === campaign.id && (
-                                                    <div className="absolute right-0 mt-1 w-36 bg-slate-800 border border-white/10 rounded-lg shadow-xl z-20 py-1">
-                                                        <button
-                                                            onClick={() => handleDeleteCampaign(campaign.id)}
-                                                            className="w-full text-left px-4 py-2 text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-2"
-                                                        >
-                                                            <Trash2 className="w-3.5 h-3.5" /> Delete
-                                                        </button>
-                                                    </div>
+                                                    <>
+                                                        <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                                                        <div className="absolute right-6 mt-2 w-48 bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.5)] z-50 py-1 origin-top-right animate-in fade-in zoom-in-95 duration-200">
+                                                            <button onClick={() => handleDeleteCampaign(campaign.id)} className="w-full text-left px-4 py-2.5 text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-3 font-medium transition-colors">
+                                                                <Trash2 className="w-4 h-4 text-red-500" /> Terminate Sequence
+                                                            </button>
+                                                        </div>
+                                                    </>
                                                 )}
-                                            </div>
-                                        </td>
-                                    </tr>
-                                ))
-                            )}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
-            {/* WIZARD MODAL */}
-            {wizardStep > 0 && (
-                <div className="fixed inset-0 bg-black/70 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={() => setWizardStep(0)}>
-                    <div className="bg-slate-900 border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
-                        {/* Wizard Header */}
-                        <div className="px-6 py-4 border-b border-white/5 flex items-center justify-between">
-                            <div className="flex items-center gap-3">
-                                <div className="flex items-center gap-1">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${wizardStep >= 1 ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-500"}`}>1</div>
-                                    <div className={`w-12 h-0.5 ${wizardStep >= 2 ? "bg-indigo-500" : "bg-slate-700"}`} />
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${wizardStep >= 2 ? "bg-indigo-600 text-white" : "bg-slate-800 text-slate-500"}`}>2</div>
-                                </div>
-                                <span className="text-sm text-slate-400 ml-2">
-                                    {wizardStep === 1 ? "Select Target Leads" : "Configure Campaign"}
-                                </span>
-                            </div>
-                            <button onClick={() => setWizardStep(0)} className="text-slate-400 hover:text-white text-lg">✕</button>
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
                         </div>
 
-                        {/* Step 1: Lead Selector */}
-                        {wizardStep === 1 && (
-                            <>
-                                <div className="px-6 py-3 border-b border-white/5 flex items-center gap-3">
-                                    <div className="relative flex-1">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500" />
-                                        <input
-                                            type="text"
-                                            value={leadSearch}
-                                            onChange={e => setLeadSearch(e.target.value)}
-                                            placeholder="Search leads by name, phone, or email..."
-                                            className="w-full pl-10 pr-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500"
-                                        />
+                        {/* Mobile Stacked Card View */}
+                        <div className="lg:hidden flex flex-col divide-y divide-white/5">
+                            {filteredCampaigns.map((campaign) => (
+                                <div key={`mob-${campaign.id}`} className="p-5 flex flex-col gap-4 relative">
+                                    <div className="flex justify-between items-start">
+                                        <div className="flex items-center gap-3">
+                                            <div className={`w-10 h-10 rounded-xl border flex items-center justify-center flex-shrink-0 ${campaign.moduleType === "AI_CALL" ? "bg-violet-500/10 border-violet-500/20 shadow-[0_0_10px_rgba(139,92,246,0.1)]" : "bg-emerald-500/10 border-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.1)]"}`}>
+                                                {campaign.moduleType === "AI_CALL" ? <Phone className={`w-5 h-5 ${campaign.moduleType === "AI_CALL" ? "text-violet-400" : "text-emerald-400"}`} /> : <Mail className="w-5 h-5 text-emerald-400" />}
+                                            </div>
+                                            <div>
+                                                <div className="font-bold text-white text-base leading-tight uppercase tracking-tight">{campaign.name}</div>
+                                                <span className={`inline-flex items-center gap-1 mt-1.5 px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider border ${campaign.status === "DRAFT" ? "bg-slate-800 text-slate-400 border-slate-700" :
+                                                    campaign.status === "RUNNING" || campaign.status === "IN_PROGRESS" ? "bg-blue-500/10 text-blue-400 border-blue-500/30" :
+                                                        campaign.status === "COMPLETED" ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/30" :
+                                                            "bg-red-500/10 text-red-400 border-red-500/30"
+                                                    }`}>
+                                                    {(campaign.status === "RUNNING" || campaign.status === "IN_PROGRESS") && <Loader2 className="w-2.5 h-2.5 animate-spin" />}
+                                                    {campaign.status}
+                                                </span>
+                                            </div>
+                                        </div>
+                                        <button onClick={() => setActiveDropdown(activeDropdown === campaign.id ? null : campaign.id)} className="p-2 bg-white/5 hover:bg-white/10 rounded-xl transition-colors border border-white/5 hover:border-white/20">
+                                            <MoreVertical className="w-4 h-4 text-slate-300" />
+                                        </button>
                                     </div>
-                                    <div className="flex items-center gap-1">
-                                        {(["all", "with_phone", "with_email"] as const).map(f => (
-                                            <button
-                                                key={f}
-                                                onClick={() => setLeadFilter(f)}
-                                                className={`px-2.5 py-1.5 text-xs rounded-lg border transition-all ${leadFilter === f
-                                                    ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40"
-                                                    : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-600"
-                                                    }`}
-                                            >
-                                                {f === "all" ? "All" : f === "with_phone" ? "📞 Phone" : "✉️ Email"}
-                                            </button>
-                                        ))}
-                                        {leadCategories.length > 0 && (
-                                            <div className="relative ml-1">
-                                                <Tag className="absolute left-2.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" />
-                                                <select
-                                                    value={leadCategoryFilter}
-                                                    onChange={e => setLeadCategoryFilter(e.target.value)}
-                                                    className="pl-7 pr-6 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs text-white focus:outline-none focus:border-indigo-500 transition-colors appearance-none cursor-pointer"
+                                    <div className="bg-slate-950/50 rounded-xl p-3 border border-white/5 flex items-center justify-between">
+                                        <div className="flex items-center gap-2 text-slate-300 text-xs font-bold uppercase tracking-wider">
+                                            <Users className="w-4 h-4 text-indigo-400" />
+                                            {campaign.totalItems ?? 0} Targets
+                                        </div>
+                                        <div className="text-[10px] font-medium text-slate-500 uppercase tracking-wider">
+                                            {new Date(campaign.createdAt).toLocaleDateString()}
+                                        </div>
+                                    </div>
+
+                                    {/* Action row explicitly generated on mobile */}
+                                    {campaign.status === "DRAFT" && (
+                                        <button onClick={() => handleStartCampaign(campaign.id)} className="w-full flex justify-center items-center gap-2 px-4 py-3 bg-emerald-500/10 text-emerald-400 hover:bg-emerald-500/20 rounded-xl transition-colors font-bold border border-emerald-500/30 text-xs uppercase tracking-wider">
+                                            <PlayCircle className="w-4 h-4" /> Execute Protocol
+                                        </button>
+                                    )}
+
+                                    {/* Mobile Dropdown Portal */}
+                                    {activeDropdown === campaign.id && (
+                                        <>
+                                            <div className="fixed inset-0 z-40" onClick={() => setActiveDropdown(null)} />
+                                            <div className="absolute top-14 right-5 w-48 rounded-xl shadow-[0_0_20px_rgba(0,0,0,0.5)] z-50 bg-slate-900/90 backdrop-blur-xl border border-white/10 py-1 origin-top-right animate-in fade-in zoom-in-95 duration-200">
+                                                <button onClick={() => handleDeleteCampaign(campaign.id)} className="w-full text-left px-4 py-3 text-sm text-red-400 hover:bg-red-500/10 flex items-center gap-3 font-medium transition-colors">
+                                                    <Trash2 className="w-4 h-4 text-red-500" /> Terminate Sequence
+                                                </button>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+                    </>
+                )}
+            </motion.div>
+
+            {/* WIZARD MODAL */}
+            <AnimatePresence>
+                {wizardStep > 0 && (
+                    <div className="fixed inset-0 z-50 flex items-center justify-center p-4">
+                        <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="absolute inset-0 bg-black/70 backdrop-blur-sm" onClick={() => setWizardStep(0)} />
+                        <motion.div initial={{ scale: 0.95, opacity: 0, y: 20 }} animate={{ scale: 1, opacity: 1, y: 0 }} exit={{ scale: 0.95, opacity: 0, y: 20 }} className="relative bg-slate-900/90 backdrop-blur-xl border border-white/10 rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col shadow-2xl overflow-hidden shadow-black/80">
+
+                            {/* Wizard Header */}
+                            <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between bg-white/[0.02]">
+                                <div className="flex items-center gap-4">
+                                    <div className="flex items-center gap-1.5">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold shadow-lg shadow-indigo-500/20 ${wizardStep >= 1 ? "bg-indigo-600 text-white border border-indigo-400/50" : "bg-slate-800 text-slate-500"}`}>1</div>
+                                        <div className={`w-10 h-0.5 rounded-full ${wizardStep >= 2 ? "bg-indigo-500 shadow-[0_0_5px_rgba(99,102,241,0.5)]" : "bg-slate-700"}`} />
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold transition-all ${wizardStep >= 2 ? "bg-indigo-600 text-white border border-indigo-400/50 shadow-lg shadow-indigo-500/20" : "bg-slate-800 text-slate-500"}`}>2</div>
+                                    </div>
+                                    <span className="text-base font-bold text-white tracking-tight ml-2">
+                                        {wizardStep === 1 ? "Select Entities" : "Configure Sequence"}
+                                    </span>
+                                </div>
+                                <button onClick={() => setWizardStep(0)} className="text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 p-2 rounded-xl transition-colors"><ChevronDown className="w-5 h-5" /></button>
+                            </div>
+
+                            {/* Step 1: Lead Selector */}
+                            {wizardStep === 1 && (
+                                <>
+                                    <div className="px-6 py-4 border-b border-white/5 flex flex-col sm:flex-row items-stretch sm:items-center gap-3 bg-white/[0.01]">
+                                        <div className="relative flex-1 group">
+                                            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-500 group-focus-within:text-indigo-400 transition-colors" />
+                                            <input
+                                                type="text"
+                                                value={leadSearch}
+                                                onChange={e => setLeadSearch(e.target.value)}
+                                                placeholder="Search matrix..."
+                                                className="w-full pl-11 pr-4 py-2.5 bg-slate-950/50 border border-white/10 rounded-xl text-white text-sm focus:outline-none focus:border-indigo-500 transition-colors shadow-inner"
+                                            />
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                            {(["all", "with_phone", "with_email"] as const).map(f => (
+                                                <button
+                                                    key={f}
+                                                    onClick={() => setLeadFilter(f)}
+                                                    className={`px-3 py-2 text-[10px] uppercase font-bold tracking-wider rounded-xl border transition-all ${leadFilter === f
+                                                        ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/40 shadow-[0_0_10px_rgba(99,102,241,0.2)]"
+                                                        : "bg-slate-950 text-slate-400 border-white/5 hover:border-white/20 hover:text-white"
+                                                        }`}
                                                 >
-                                                    <option value="ALL">All Categories</option>
-                                                    {leadCategories.map(c => (
-                                                        <option key={c} value={c}>{c}</option>
-                                                    ))}
-                                                </select>
-                                                <ChevronDown className="absolute right-1.5 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500 pointer-events-none" />
+                                                    {f === "all" ? "All" : f === "with_phone" ? "Phone" : "Email"}
+                                                </button>
+                                            ))}
+                                            {leadCategories.length > 0 && (
+                                                <div className="relative ml-1">
+                                                    <Tag className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500" />
+                                                    <select
+                                                        value={leadCategoryFilter}
+                                                        onChange={e => setLeadCategoryFilter(e.target.value)}
+                                                        className="pl-9 pr-8 py-2.5 bg-slate-950/50 border border-white/10 rounded-xl text-[10px] uppercase font-bold tracking-wider text-white focus:outline-none focus:border-indigo-500 transition-colors appearance-none cursor-pointer"
+                                                    >
+                                                        <option value="ALL">ALL SECTORS</option>
+                                                        {leadCategories.map(c => <option key={c} value={c}>{c}</option>)}
+                                                    </select>
+                                                    <ChevronDown className="absolute right-2.5 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-slate-500 pointer-events-none" />
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+
+                                    <div className="px-6 py-2.5 border-b border-white/5 flex justify-between items-center bg-indigo-500/5">
+                                        <button onClick={toggleAll} className="text-xs text-indigo-400 hover:text-indigo-300 font-bold uppercase tracking-wider transition-colors bg-indigo-500/10 hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg border border-indigo-500/20">
+                                            {selectedLeadIds.size === filteredLeads.length && filteredLeads.length > 0 ? "Deselect Mass" : "Select Entire Mass"}
+                                        </button>
+                                        <span className="text-xs font-bold text-slate-400 uppercase tracking-wider"><strong className="text-indigo-400">{selectedLeadIds.size}</strong> / {filteredLeads.length} Selected</span>
+                                    </div>
+
+                                    <div className="overflow-y-auto flex-1 max-h-[400px] scrollbar-none">
+                                        {filteredLeads.length === 0 ? (
+                                            <div className="flex flex-col items-center justify-center py-16 text-slate-400">
+                                                <div className="w-16 h-16 bg-white/5 rounded-2xl border border-white/10 flex items-center justify-center mb-4"><Users className="w-8 h-8 text-slate-600" /></div>
+                                                <p className="font-bold text-white mb-1">No compatible leads</p>
+                                                <p className="text-sm">Scrape targets using the Engine to populate this list.</p>
+                                            </div>
+                                        ) : (
+                                            <div className="divide-y divide-white/5">
+                                                {filteredLeads.map(lead => (
+                                                    <div
+                                                        key={lead.id}
+                                                        onClick={() => toggleLead(lead.id)}
+                                                        className={`flex items-center gap-4 px-6 py-4 cursor-pointer transition-all border-l-2 ${selectedLeadIds.has(lead.id)
+                                                            ? "bg-indigo-500/10 hover:bg-indigo-500/20 border-indigo-500"
+                                                            : "hover:bg-white/[0.03] border-transparent"
+                                                            }`}
+                                                    >
+                                                        <div className={`w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${selectedLeadIds.has(lead.id) ? "bg-indigo-600 border-indigo-500 shadow-[0_0_10px_rgba(99,102,241,0.5)]" : "border-slate-600"}`}>
+                                                            {selectedLeadIds.has(lead.id) && <CheckCircle2 className="w-4 h-4 text-white" />}
+                                                        </div>
+                                                        <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-500/10 to-violet-500/10 border border-white/5 flex items-center justify-center flex-shrink-0">
+                                                            <span className="text-xs font-bold text-indigo-400">{(lead.companyName || "?")[0].toUpperCase()}</span>
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                            <div className="font-bold text-white text-sm truncate">{lead.companyName || "Unknown Entity"}</div>
+                                                            <div className="flex flex-wrap items-center gap-3 text-[11px] font-medium text-slate-500 mt-1 uppercase tracking-wider">
+                                                                {lead.phone && <span className="flex items-center gap-1.5"><Phone className="w-3 h-3 text-violet-400/70" /> {lead.phone}</span>}
+                                                                {lead.email && <span className="flex items-center gap-1.5"><Mail className="w-3 h-3 text-emerald-400/70" /> {lead.email}</span>}
+                                                            </div>
+                                                        </div>
+                                                    </div>
+                                                ))}
                                             </div>
                                         )}
                                     </div>
-                                </div>
 
-                                <div className="px-6 py-2 border-b border-white/5 flex justify-between items-center">
-                                    <button
-                                        onClick={toggleAll}
-                                        className="text-xs text-indigo-400 hover:text-indigo-300 font-medium"
-                                    >
-                                        {selectedLeadIds.size === filteredLeads.length && filteredLeads.length > 0 ? "Deselect All" : "Select All"}
-                                    </button>
-                                    <span className="text-xs text-slate-500">{selectedLeadIds.size} of {filteredLeads.length} selected</span>
-                                </div>
+                                    <div className="px-6 py-5 border-t border-white/5 flex justify-between items-center bg-black/20">
+                                        <button onClick={() => setWizardStep(0)} className="px-5 py-2.5 rounded-xl font-bold bg-white/5 hover:bg-white/10 text-white transition-all text-sm">Abort</button>
+                                        <button
+                                            onClick={() => setWizardStep(2)}
+                                            disabled={selectedLeadIds.size === 0}
+                                            className="glass-button flex items-center gap-2 px-6 py-2.5 bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(99,102,241,0.4)] border-indigo-500/50 text-sm"
+                                        >
+                                            Next Phase <ArrowRight className="w-4 h-4" />
+                                        </button>
+                                    </div>
+                                </>
+                            )}
 
-                                <div className="overflow-y-auto flex-1 max-h-[400px]">
-                                    {filteredLeads.length === 0 ? (
-                                        <div className="flex flex-col items-center justify-center py-12 text-slate-400">
-                                            <Users className="w-10 h-10 mb-3 text-slate-600" />
-                                            <p className="font-medium text-white mb-1">No leads found</p>
-                                            <p className="text-sm">Scrape some leads first, then come back to target them.</p>
+                            {/* Step 2: Configure Campaign */}
+                            {wizardStep === 2 && (
+                                <form onSubmit={handleCreateCampaign} className="flex flex-col flex-1 min-h-0">
+                                    <div className="overflow-y-auto flex-1 px-6 py-6 space-y-6 scrollbar-none">
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Campaign Identity</label>
+                                            <input
+                                                type="text" required value={name} onChange={e => setName(e.target.value)}
+                                                className="glass-input w-full px-4 py-3" placeholder="e.g. Q3 Outreach Matrix"
+                                            />
                                         </div>
-                                    ) : (
-                                        filteredLeads.map(lead => (
-                                            <div
-                                                key={lead.id}
-                                                onClick={() => toggleLead(lead.id)}
-                                                className={`flex items-center gap-4 px-6 py-3 cursor-pointer border-b border-white/5 transition-all ${selectedLeadIds.has(lead.id)
-                                                    ? "bg-indigo-500/5 hover:bg-indigo-500/10"
-                                                    : "hover:bg-white/[0.02]"
-                                                    }`}
-                                            >
-                                                <div className={`w-5 h-5 rounded-md border-2 flex items-center justify-center transition-all ${selectedLeadIds.has(lead.id)
-                                                    ? "bg-indigo-600 border-indigo-500"
-                                                    : "border-slate-600"
-                                                    }`}>
-                                                    {selectedLeadIds.has(lead.id) && <CheckCircle2 className="w-3.5 h-3.5 text-white" />}
+
+                                        <div>
+                                            <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Delivery Vector</label>
+                                            <div className="grid grid-cols-2 gap-4">
+                                                <button
+                                                    type="button"
+                                                    onClick={() => hasAiModule && setModuleType("AI_CALL")}
+                                                    className={`relative p-5 rounded-2xl border-2 transition-all text-left ${moduleType === "AI_CALL"
+                                                        ? "border-violet-500 bg-violet-500/10 shadow-[0_0_20px_rgba(139,92,246,0.15)]"
+                                                        : "border-white/5 bg-slate-900/50 hover:bg-slate-800"
+                                                        } ${!hasAiModule ? "opacity-30 cursor-not-allowed grayscale" : "cursor-pointer"}`}
+                                                >
+                                                    <div className={`p-3 rounded-xl w-fit mb-3 ${moduleType === "AI_CALL" ? "bg-violet-500/20" : "bg-white/5"}`}><Phone className={`w-6 h-6 ${moduleType === "AI_CALL" ? "text-violet-400" : "text-slate-500"}`} /></div>
+                                                    <div className="font-bold text-white text-sm mb-1 uppercase tracking-wider">Voice AI</div>
+                                                    <div className="text-xs text-slate-400 font-medium">Hyper-realistic autonomous cold calling</div>
+                                                    {!hasAiModule && <span className="absolute top-4 right-4 text-[10px] uppercase font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded-md border border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)]">Pro</span>}
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    onClick={() => hasEmailModule && setModuleType("EMAIL")}
+                                                    className={`relative p-5 rounded-2xl border-2 transition-all text-left ${moduleType === "EMAIL"
+                                                        ? "border-emerald-500 bg-emerald-500/10 shadow-[0_0_20px_rgba(16,185,129,0.15)]"
+                                                        : "border-white/5 bg-slate-900/50 hover:bg-slate-800"
+                                                        } ${!hasEmailModule ? "opacity-30 cursor-not-allowed grayscale" : "cursor-pointer"}`}
+                                                >
+                                                    <div className={`p-3 rounded-xl w-fit mb-3 ${moduleType === "EMAIL" ? "bg-emerald-500/20" : "bg-white/5"}`}><Mail className={`w-6 h-6 ${moduleType === "EMAIL" ? "text-emerald-400" : "text-slate-500"}`} /></div>
+                                                    <div className="font-bold text-white text-sm mb-1 uppercase tracking-wider">Email Sequence</div>
+                                                    <div className="text-xs text-slate-400 font-medium">AI generated drip methodology</div>
+                                                    {!hasEmailModule && <span className="absolute top-4 right-4 text-[10px] uppercase font-bold text-amber-500 bg-amber-500/10 px-2 py-1 rounded-md border border-amber-500/20 shadow-[0_0_10px_rgba(245,158,11,0.2)]">Pro</span>}
+                                                </button>
+                                            </div>
+                                        </div>
+
+                                        {moduleType === "AI_CALL" ? (
+                                            <div>
+                                                <label className="block text-xs font-bold text-slate-400 uppercase tracking-wider mb-2">Neural Prompt Injection (Optional)</label>
+                                                <textarea
+                                                    value={customPrompt} onChange={e => setCustomPrompt(e.target.value)}
+                                                    className="glass-input w-full px-4 py-3 min-h-[120px]"
+                                                    placeholder="Override the base personality..."
+                                                />
+                                            </div>
+                                        ) : (
+                                            <div className="space-y-4">
+                                                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl px-4 py-3 flex items-start gap-3">
+                                                    <Sparkles className="w-5 h-5 text-emerald-400 flex-shrink-0" />
+                                                    <p className="text-xs text-emerald-300 font-medium">The AI engine will construct dynamic copy based on the underlying knowledge graphs for each target entity.</p>
                                                 </div>
-                                                <div className="flex-1 min-w-0">
-                                                    <div className="font-medium text-white text-sm truncate">{lead.companyName || "Unknown"}</div>
-                                                    <div className="flex items-center gap-3 text-xs text-slate-500 mt-0.5">
-                                                        {lead.phone && <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> {lead.phone}</span>}
-                                                        {lead.email && <span className="flex items-center gap-1"><Mail className="w-3 h-3" /> {lead.email}</span>}
-                                                        {lead.website && <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> {new URL(lead.website).hostname}</span>}
+
+                                                <div className="p-5 rounded-xl border border-white/5 bg-white/[0.01] space-y-4">
+                                                    <div>
+                                                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Sender Profile</label>
+                                                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                                                            <input type="text" value={emailSenderName} onChange={e => setEmailSenderName(e.target.value)} placeholder="Full Name" required className="glass-input px-4 py-2.5" />
+                                                            <input type="text" value={emailSenderRole} onChange={e => setEmailSenderRole(e.target.value)} placeholder="Job Title" required className="glass-input px-4 py-2.5" />
+                                                            <input type="text" value={emailSenderCompany} onChange={e => setEmailSenderCompany(e.target.value)} placeholder="Company" required className="glass-input px-4 py-2.5" />
+                                                        </div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                        <div><label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Core Value</label><textarea value={emailOffering} onChange={e => setEmailOffering(e.target.value)} placeholder="e.g. Fully managed Web3 integration" required className="glass-input w-full px-4 py-3 min-h-[80px]" /></div>
+                                                        <div><label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Friction Point</label><textarea value={emailPainPoint} onChange={e => setEmailPainPoint(e.target.value)} placeholder="e.g. Existing networks are too slow and expensive" required className="glass-input w-full px-4 py-3 min-h-[80px]" /></div>
+                                                    </div>
+
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                                                        <div><label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">CTA Copy</label><input type="text" value={emailCtaText} onChange={e => setEmailCtaText(e.target.value)} placeholder="e.g. Reply to schedule" required className="glass-input w-full px-4 py-3" /></div>
+                                                        <div><label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">CTA URL</label><input type="text" value={emailCtaLink} onChange={e => setEmailCtaLink(e.target.value)} placeholder="https://..." className="glass-input w-full px-4 py-3" /></div>
+                                                    </div>
+
+                                                    <div>
+                                                        <label className="block text-[11px] font-bold text-slate-500 uppercase tracking-wider mb-2">Synthesized Tone</label>
+                                                        <div className="grid grid-cols-3 gap-3">
+                                                            {["PROFESSIONAL", "FRIENDLY", "CASUAL"].map(t => (
+                                                                <button key={t} type="button" onClick={() => setEmailTone(t)} className={`px-3 py-2.5 rounded-xl text-[10px] font-bold uppercase tracking-wider border transition-all ${emailTone === t ? "bg-indigo-500/20 text-indigo-300 border-indigo-500/30" : "bg-slate-900 border-white/5 text-slate-400 hover:border-white/10"}`}>
+                                                                    {t}
+                                                                </button>
+                                                            ))}
+                                                        </div>
                                                     </div>
                                                 </div>
                                             </div>
-                                        ))
-                                    )}
-                                </div>
+                                        )}
+                                    </div>
 
-                                <div className="px-6 py-4 border-t border-white/5 flex justify-between items-center">
-                                    <span className="text-sm text-slate-400">
-                                        <strong className="text-indigo-400">{selectedLeadIds.size}</strong> leads selected
-                                    </span>
-                                    <button
-                                        onClick={() => setWizardStep(2)}
-                                        disabled={selectedLeadIds.size === 0}
-                                        className="flex items-center gap-2 px-5 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed"
-                                    >
-                                        Next: Configure <ArrowRight className="w-4 h-4" />
-                                    </button>
-                                </div>
-                            </>
-                        )}
-
-                        {/* Step 2: Configure Campaign */}
-                        {wizardStep === 2 && (
-                            <form onSubmit={handleCreateCampaign} className="flex flex-col flex-1 min-h-0">
-                                <div className="overflow-y-auto flex-1 px-6 py-5 space-y-5">
-                                    <div className="p-3 bg-indigo-500/10 border border-indigo-500/20 rounded-lg flex items-center gap-3 text-sm">
-                                        <Users className="w-5 h-5 text-indigo-400 flex-shrink-0" />
-                                        <span className="text-indigo-300">
-                                            Targeting <strong>{selectedLeadIds.size}</strong> selected leads
-                                        </span>
-                                        <button type="button" onClick={() => setWizardStep(1)} className="ml-auto text-xs text-indigo-400 hover:text-indigo-300 underline">
-                                            Change
+                                    <div className="px-6 py-5 border-t border-white/5 flex justify-between items-center bg-black/20">
+                                        <button type="button" onClick={() => setWizardStep(1)} className="flex items-center gap-2 px-5 py-2.5 font-bold rounded-xl bg-white/5 hover:bg-white/10 text-white transition-colors text-sm"><ArrowLeft className="w-4 h-4" /> Revert</button>
+                                        <button type="submit" disabled={isCreating || !name.trim() || (moduleType === "EMAIL" && (!emailSenderName || !emailOffering || !emailPainPoint || !emailCtaText))} className="glass-button flex items-center gap-2 px-8 py-2.5 bg-indigo-600/80 hover:bg-indigo-500 text-white font-bold rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-[0_0_15px_rgba(99,102,241,0.4)] border-indigo-500/50 text-sm tracking-wider uppercase">
+                                            {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Megaphone className="w-4 h-4" />} Initialize Protocol
                                         </button>
                                     </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-300 mb-1.5">Campaign Name</label>
-                                        <input
-                                            type="text"
-                                            required
-                                            value={name}
-                                            onChange={e => setName(e.target.value)}
-                                            className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500 transition-colors"
-                                            placeholder="e.g. Q3 Real Estate AI Pitch"
-                                        />
-                                    </div>
-
-                                    <div>
-                                        <label className="block text-sm font-medium text-slate-300 mb-1.5">
-                                            Outbound Channel
-                                        </label>
-                                        <div className="grid grid-cols-2 gap-3">
-                                            <button
-                                                type="button"
-                                                onClick={() => hasAiModule && setModuleType("AI_CALL")}
-                                                className={`relative p-4 rounded-xl border-2 transition-all text-left ${moduleType === "AI_CALL"
-                                                    ? "border-violet-500 bg-violet-500/10"
-                                                    : "border-slate-700 bg-slate-800 hover:border-slate-600"
-                                                    } ${!hasAiModule ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
-                                            >
-                                                <Phone className="w-6 h-6 text-violet-400 mb-2" />
-                                                <div className="font-medium text-white text-sm">VAPI AI Caller</div>
-                                                <div className="text-xs text-slate-400 mt-0.5">Automated cold calls with AI voice</div>
-                                                {!hasAiModule && <span className="absolute top-2 right-2 text-xs text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">Pro</span>}
-                                            </button>
-                                            <button
-                                                type="button"
-                                                onClick={() => hasEmailModule && setModuleType("EMAIL")}
-                                                className={`relative p-4 rounded-xl border-2 transition-all text-left ${moduleType === "EMAIL"
-                                                    ? "border-emerald-500 bg-emerald-500/10"
-                                                    : "border-slate-700 bg-slate-800 hover:border-slate-600"
-                                                    } ${!hasEmailModule ? "opacity-40 cursor-not-allowed" : "cursor-pointer"}`}
-                                            >
-                                                <Mail className="w-6 h-6 text-emerald-400 mb-2" />
-                                                <div className="font-medium text-white text-sm">Email Outreach</div>
-                                                <div className="text-xs text-slate-400 mt-0.5">Automated email via SMTP</div>
-                                                {!hasEmailModule && <span className="absolute top-2 right-2 text-xs text-amber-400 bg-amber-500/10 px-2 py-0.5 rounded border border-amber-500/20">Pro</span>}
-                                            </button>
-                                        </div>
-                                    </div>
-
-                                    {/* Conditional: AI Call → System Prompt | Email → Structured Config */}
-                                    {moduleType === "AI_CALL" ? (
-                                        <div>
-                                            <label className="block text-sm font-medium text-slate-300 mb-1.5">Custom System Prompt (Optional)</label>
-                                            <textarea
-                                                value={customPrompt}
-                                                onChange={e => setCustomPrompt(e.target.value)}
-                                                className="w-full px-3 py-2.5 bg-slate-800 border border-slate-700 rounded-lg text-white focus:outline-none focus:border-indigo-500 transition-colors min-h-[100px] resize-none text-sm"
-                                                placeholder="e.g. 'Speak with an Australian accent and focus on scheduling a meeting.'"
-                                            />
-                                            <p className="text-xs text-slate-500 mt-1">Injected directly into the VAPI call payload.</p>
-                                        </div>
-                                    ) : (
-                                        <div className="space-y-4">
-                                            <div className="bg-emerald-500/5 border border-emerald-500/20 rounded-lg px-3 py-2">
-                                                <p className="text-xs text-emerald-400">✨ AI will generate a unique personalized email for each lead using the info below.</p>
-                                            </div>
-
-                                            {/* Sender Info Row */}
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Your Info</label>
-                                                <div className="grid grid-cols-3 gap-2">
-                                                    <input
-                                                        type="text" value={emailSenderName} onChange={e => setEmailSenderName(e.target.value)}
-                                                        placeholder="Your Name" required
-                                                        className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                    />
-                                                    <input
-                                                        type="text" value={emailSenderRole} onChange={e => setEmailSenderRole(e.target.value)}
-                                                        placeholder="Your Role" required
-                                                        className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                    />
-                                                    <input
-                                                        type="text" value={emailSenderCompany} onChange={e => setEmailSenderCompany(e.target.value)}
-                                                        placeholder="Company Name" required
-                                                        className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {/* Offering */}
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">What You're Offering</label>
-                                                <textarea
-                                                    value={emailOffering} onChange={e => setEmailOffering(e.target.value)}
-                                                    placeholder="e.g. 'SEO and Google Ads management for dental practices'" required
-                                                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 resize-none min-h-[60px]"
-                                                />
-                                            </div>
-
-                                            {/* Pain Point */}
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Key Pain Point</label>
-                                                <textarea
-                                                    value={emailPainPoint} onChange={e => setEmailPainPoint(e.target.value)}
-                                                    placeholder="e.g. 'Most dentists lose 40% of new patients to competitors with better Google rankings'" required
-                                                    className="w-full px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500 resize-none min-h-[60px]"
-                                                />
-                                            </div>
-
-                                            {/* CTA Row */}
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Call to Action</label>
-                                                <div className="grid grid-cols-2 gap-2">
-                                                    <input
-                                                        type="text" value={emailCtaText} onChange={e => setEmailCtaText(e.target.value)}
-                                                        placeholder="e.g. 'Book a free strategy call'" required
-                                                        className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                    />
-                                                    <input
-                                                        type="text" value={emailCtaLink} onChange={e => setEmailCtaLink(e.target.value)}
-                                                        placeholder="https://calendly.com/... (optional)"
-                                                        className="px-3 py-2 bg-slate-800 border border-slate-700 rounded-lg text-white text-sm focus:outline-none focus:border-indigo-500"
-                                                    />
-                                                </div>
-                                            </div>
-
-                                            {/* Tone */}
-                                            <div>
-                                                <label className="block text-xs font-semibold text-slate-400 uppercase tracking-wider mb-2">Tone</label>
-                                                <div className="flex gap-2">
-                                                    {["PROFESSIONAL", "FRIENDLY", "CASUAL"].map(t => (
-                                                        <button
-                                                            key={t} type="button"
-                                                            onClick={() => setEmailTone(t)}
-                                                            className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium border transition-all ${emailTone === t
-                                                                ? "bg-emerald-500/20 text-emerald-300 border-emerald-500/40"
-                                                                : "bg-slate-800 text-slate-400 border-slate-700 hover:border-slate-600"
-                                                                }`}
-                                                        >
-                                                            {t === "PROFESSIONAL" ? "💼 Professional" : t === "FRIENDLY" ? "🤝 Friendly" : "😊 Casual"}
-                                                        </button>
-                                                    ))}
-                                                </div>
-                                            </div>
-                                        </div>
-                                    )}
-                                </div>
-
-                                <div className="px-6 py-4 border-t border-white/5 flex justify-between items-center">
-                                    <button
-                                        type="button"
-                                        onClick={() => setWizardStep(1)}
-                                        className="flex items-center gap-2 px-4 py-2 text-slate-400 hover:text-white transition-colors text-sm"
-                                    >
-                                        <ArrowLeft className="w-4 h-4" /> Back
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        disabled={isCreating || !name.trim() || (moduleType === "EMAIL" && (!emailSenderName || !emailOffering || !emailPainPoint || !emailCtaText))}
-                                        className="flex items-center gap-2 px-6 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white font-medium rounded-xl transition-all disabled:opacity-40 disabled:cursor-not-allowed shadow-lg shadow-indigo-500/20"
-                                    >
-                                        {isCreating ? <Loader2 className="w-4 h-4 animate-spin" /> : <Megaphone className="w-4 h-4" />}
-                                        {isCreating ? "Creating..." : "Draft Campaign"}
-                                    </button>
-                                </div>
-                            </form>
-                        )}
+                                </form>
+                            )}
+                        </motion.div>
                     </div>
-                </div>
-            )}
-        </div>
+                )}
+            </AnimatePresence>
+        </motion.div>
     );
 }
