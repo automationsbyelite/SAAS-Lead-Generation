@@ -1,58 +1,52 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  ManyToOne,
-  JoinColumn,
-  CreateDateColumn,
-  UpdateDateColumn,
-  Index,
-  Unique,
-} from 'typeorm';
-import { Tenant } from '../tenant/tenant.entity';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import { Role } from '@shared/enums/role.enum';
 
-@Entity('users')
-@Unique(['tenantId', 'email'])
-@Index(['tenantId'])
-export class User {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+export type UserDocument = User & Document;
 
-  @Column('uuid')
+@Schema({ timestamps: true, collection: 'users' })
+export class User {
+  @Prop({ type: String, default: uuidv4 })
+  _id: string;
+
+  @Prop({ type: String, required: true, index: true })
   tenantId: string;
 
-  @ManyToOne(() => Tenant)
-  @JoinColumn({ name: 'tenantId' })
-  tenant: Tenant;
-
-  @Column({ nullable: true })
+  @Prop({ type: String, default: null })
   firstName: string;
 
-  @Column({ nullable: true })
+  @Prop({ type: String, default: null })
   lastName: string;
 
-  @Column()
+  @Prop({ required: true })
   email: string;
 
-  @Column()
+  @Prop({ required: true })
   passwordHash: string;
 
-  @Column({
-    type: 'enum',
-    enum: Role,
-  })
+  @Prop({ type: String, enum: Role, required: true })
   role: Role;
 
-  @Column({ default: true })
+  @Prop({ default: true })
   isActive: boolean;
 
-  @Column({ type: 'timestamp', nullable: true })
+  @Prop({ type: Date, default: null })
   deletedAt: Date | null;
 
-  @CreateDateColumn()
+  // Populated by Mongoose timestamps — typed here for lean() access
+  id: string;
   createdAt: Date;
-
-  @UpdateDateColumn()
   updatedAt: Date;
 }
+
+export const UserSchema = SchemaFactory.createForClass(User);
+
+// Compound unique index: one email per tenant
+UserSchema.index({ tenantId: 1, email: 1 }, { unique: true });
+
+UserSchema.virtual('id').get(function () {
+  return this._id;
+});
+UserSchema.set('toJSON', { virtuals: true });
+UserSchema.set('toObject', { virtuals: true });

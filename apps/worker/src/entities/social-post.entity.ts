@@ -1,13 +1,7 @@
-import {
-    Entity,
-    PrimaryGeneratedColumn,
-    Column,
-    CreateDateColumn,
-    UpdateDateColumn,
-    ManyToOne,
-    JoinColumn,
-} from 'typeorm';
-import { SocialAccount, SocialPlatform } from './social-account.entity';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
+import { SocialPlatform } from './social-account.entity';
 
 export enum PostStatus {
     PENDING = 'pending',
@@ -22,51 +16,31 @@ export enum MediaType {
     REELS = 'REELS',
 }
 
-@Entity('social_posts')
+export type SocialPostDocument = SocialPost & Document;
+
+@Schema({ timestamps: true, collection: 'social_posts' })
 export class SocialPost {
-    @PrimaryGeneratedColumn('uuid')
-    id: string;
+  @Prop({ type: String, default: uuidv4 })
+  _id: string;
 
-    @Column('uuid')
-    tenantId: string;
+  @Prop({ type: String, required: true }) tenantId: string;
+  @Prop({ type: String, required: true }) userId: string;
+  @Prop({ type: String, required: true }) socialAccountId: string;
+  @Prop({ type: String, enum: SocialPlatform, required: true }) platform: SocialPlatform;
+  @Prop({ required: true }) caption: string;
+  @Prop({ required: true }) mediaUrl: string;
+  @Prop({ type: String, enum: MediaType, default: MediaType.IMAGE }) mediaType: MediaType;
+  @Prop({ required: true }) scheduledAt: Date;
+  @Prop({ type: String, enum: PostStatus, default: PostStatus.PENDING }) status: PostStatus;
+  @Prop({ type: String, default: null }) platformPostId: string;
+  @Prop({ type: String, default: null }) errorMessage: string;
 
-    @Column('uuid')
-    userId: string;
-
-    @Column('uuid')
-    socialAccountId: string;
-
-    @ManyToOne(() => SocialAccount, { onDelete: 'CASCADE' })
-    @JoinColumn({ name: 'socialAccountId' })
-    socialAccount: SocialAccount;
-
-    @Column({ type: 'enum', enum: SocialPlatform })
-    platform: SocialPlatform;
-
-    @Column('text')
-    caption: string;
-
-    @Column('text')
-    mediaUrl: string;
-
-    @Column({ type: 'enum', enum: MediaType, default: MediaType.IMAGE })
-    mediaType: MediaType;
-
-    @Column('timestamp')
-    scheduledAt: Date;
-
-    @Column({ type: 'enum', enum: PostStatus, default: PostStatus.PENDING })
-    status: PostStatus;
-
-    @Column({ nullable: true })
-    platformPostId: string;
-
-    @Column({ nullable: true, type: 'text' })
-    errorMessage: string;
-
-    @CreateDateColumn()
-    createdAt: Date;
-
-    @UpdateDateColumn()
-    updatedAt: Date;
+  id: string;
+  createdAt: Date;
+  updatedAt: Date;
 }
+
+export const SocialPostSchema = SchemaFactory.createForClass(SocialPost);
+SocialPostSchema.virtual('id').get(function () { return this._id; });
+SocialPostSchema.set('toJSON', { virtuals: true });
+SocialPostSchema.set('toObject', { virtuals: true });

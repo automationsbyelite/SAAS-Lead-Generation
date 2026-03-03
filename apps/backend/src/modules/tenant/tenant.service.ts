@@ -1,43 +1,43 @@
 import { Injectable } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, IsNull } from 'typeorm';
-import { Tenant } from './tenant.entity';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Tenant, TenantDocument } from './tenant.entity';
 
 @Injectable()
 export class TenantService {
   constructor(
-    @InjectRepository(Tenant)
-    private tenantRepository: Repository<Tenant>,
+    @InjectModel(Tenant.name)
+    private tenantModel: Model<TenantDocument>,
   ) { }
 
   async findById(id: string): Promise<Tenant | null> {
-    return this.tenantRepository.findOne({
-      where: { id, isActive: true, deletedAt: IsNull() },
-    });
+    return this.tenantModel.findOne({ _id: id, isActive: true, deletedAt: null }).lean<Tenant>();
   }
 
   async findAll(): Promise<Tenant[]> {
-    return this.tenantRepository.find({
-      where: { isActive: true, deletedAt: IsNull() },
-      order: { createdAt: 'DESC' }
-    });
+    return this.tenantModel
+      .find({ isActive: true, deletedAt: null })
+      .sort({ createdAt: -1 })
+      .lean<Tenant[]>();
   }
 
-  async create(tenant: Partial<Tenant>): Promise<Tenant> {
-    const newTenant = this.tenantRepository.create(tenant);
-    return this.tenantRepository.save(newTenant);
+  async create(data: Partial<Tenant>): Promise<Tenant> {
+    const created = new this.tenantModel(data);
+    const saved = await created.save();
+    return saved.toObject();
   }
 
   async updateModules(id: string, enabledModules: string[]): Promise<Tenant> {
-    const tenant = await this.tenantRepository.findOne({
-      where: { id, isActive: true, deletedAt: IsNull() },
-    });
+    const tenant = await this.tenantModel.findOneAndUpdate(
+      { _id: id, isActive: true, deletedAt: null },
+      { enabledModules },
+      { new: true },
+    ).lean<Tenant>();
 
     if (!tenant) {
       throw new Error('Tenant not found');
     }
 
-    tenant.enabledModules = enabledModules as any;
-    return this.tenantRepository.save(tenant);
+    return tenant;
   }
 }

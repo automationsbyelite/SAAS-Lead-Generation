@@ -1,52 +1,45 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  Index,
-  Unique,
-} from 'typeorm';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import { CampaignItemStatus } from '@shared/enums/campaign-item-status.enum';
 
-@Entity('campaign_items')
-@Unique(['campaignId', 'leadId'])
-@Index(['tenantId', 'campaignId'])
-@Index(['tenantId', 'status'])
-@Index(['campaignId'])
-@Index(['leadId'])
-export class CampaignItem {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+export type CampaignItemDocument = CampaignItem & Document;
 
-  @Column('uuid')
+@Schema({ timestamps: true, collection: 'campaign_items' })
+export class CampaignItem {
+  @Prop({ type: String, default: uuidv4 })
+  _id: string;
+
+  @Prop({ type: String, required: true, index: true })
   tenantId: string;
 
-  @Column('uuid')
+  @Prop({ type: String, required: true, index: true })
   campaignId: string;
 
-  @Column('uuid')
+  @Prop({ type: String, required: true, index: true })
   leadId: string;
 
-  @Column({
-    type: 'enum',
-    enum: CampaignItemStatus,
-    default: CampaignItemStatus.PENDING,
-  })
+  @Prop({ type: String, enum: CampaignItemStatus, default: CampaignItemStatus.PENDING })
   status: CampaignItemStatus;
 
-  @Column({ default: 0 })
+  @Prop({ default: 0 })
   attemptCount: number;
 
-  @Column({ nullable: true })
+  @Prop({ type: String, default: null })
   externalRefId: string | null;
 
-  @Column({ nullable: true })
+  @Prop({ type: Date, default: null })
   lastAttemptAt: Date | null;
 
-  @CreateDateColumn()
+  id: string;
   createdAt: Date;
-
-  @UpdateDateColumn()
   updatedAt: Date;
 }
+
+export const CampaignItemSchema = SchemaFactory.createForClass(CampaignItem);
+CampaignItemSchema.index({ campaignId: 1, leadId: 1 }, { unique: true });
+CampaignItemSchema.index({ tenantId: 1, campaignId: 1 });
+CampaignItemSchema.index({ tenantId: 1, status: 1 });
+CampaignItemSchema.virtual('id').get(function () { return this._id; });
+CampaignItemSchema.set('toJSON', { virtuals: true });
+CampaignItemSchema.set('toObject', { virtuals: true });

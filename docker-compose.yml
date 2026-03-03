@@ -1,24 +1,139 @@
-version: '3.8'
-services:
-  postgres:
-    image: postgres:15
-    container_name: saas_postgres
-    environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: saas
-    ports:
-      - "5432:5432"
-    volumes:
-      - postgres_data:/var/lib/postgresql/data
-    restart: unless-stopped
+# ============================================================
+# docker-compose.yml — LOCAL DEVELOPMENT
+# ============================================================
+# Features:
+#  - Hot-reload for backend (nodemon+ts-node), frontend (Next.js HMR), worker (nodemon)
+#  - Volume mounts so code changes reflect instantly (no rebuild needed)
+#  - MongoDB Atlas used for dev database (no local mongo container needed)
+#  - Redis with persistent data volume
+#  - All services networked together on: saas_network
+# ============================================================
+# Usage: docker compose up --build
+# ============================================================
 
+services:
+  # ── Redis (BullMQ Queue) ────────────────────────────────────
   redis:
-    image: redis:alpine
+    image: redis:7-alpine
     container_name: saas_redis
+    restart: unless-stopped
     ports:
       - "6379:6379"
-    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+    networks:
+      - saas_network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
+  # ── Backend (NestJS — hot reload) ──────────────────────────
+  backend:
+    build:
+      context: .
+      dockerfile: apps/backend/Dockerfile
+      target: development
+    container_name: saas_backend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      MONGO_URI: ${MONGO_URI}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    ports:
+      - "${PORT:-3000}:3000"
+    volumes:
+      # Mount source for hot reload — changes reflect instantly
+      - ./apps/backend/src:/app/apps/backend/src
+      - ./apps/backend/nest-cli.json:/app/apps/backend/nest-cli.json
+      - ./apps/backend/tsconfig.json:/app/apps/backend/tsconfig.json
+      - ./packages:/app/packages
+      # Prevent node_modules from being overwritten by host
+      - backend_node_modules:/app/node_modules
+      - backend_app_node_modules:/app/apps/backend/node_modules
+    working_dir: /app/apps/backend
+    networks:
+      - saas_network
+    depends_on:
+      redis:
+        condition: service_healthy
+
+  # ── Frontend (Next.js — HMR) ───────────────────────────────
+  frontend:
+    build:
+      context: .
+      dockerfile: apps/frontend/Dockerfile
+      target: development
+    container_name: saas_frontend
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      NEXT_PUBLIC_API_URL: ${NEXT_PUBLIC_API_URL:-http://localhost:3000}
+      HOSTNAME: 0.0.0.0
+      PORT: 4000
+    ports:
+      - "4000:4000"
+    volumes:
+      # Mount source for Next.js HMR
+      - ./apps/frontend/src:/app/src
+      - ./apps/frontend/public:/app/public
+      - ./apps/frontend/next.config.ts:/app/next.config.ts
+      - ./apps/frontend/postcss.config.mjs:/app/postcss.config.mjs
+      - ./apps/frontend/tsconfig.json:/app/tsconfig.json
+      # Prevent node_modules from being overwritten
+      - frontend_node_modules:/app/node_modules
+      - frontend_next_cache:/app/.next
+    networks:
+      - saas_network
+    depends_on:
+      - backend
+
+  # ── Worker (NestJS context — nodemon hot reload) ───────────
+  worker:
+    build:
+      context: .
+      dockerfile: apps/worker/Dockerfile
+      target: development
+    container_name: saas_worker
+    restart: unless-stopped
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: development
+      MONGO_URI: ${MONGO_URI}
+      REDIS_HOST: redis
+      REDIS_PORT: 6379
+    volumes:
+      # Mount source for nodemon hot reload
+      - ./apps/worker/src:/app/apps/worker/src
+      - ./apps/worker/tsconfig.build.json:/app/apps/worker/tsconfig.build.json
+      - ./apps/worker/tsconfig.json:/app/apps/worker/tsconfig.json
+      - ./apps/backend/src:/app/apps/backend/src
+      - ./packages:/app/packages
+      # Named volume to protect node_modules
+      - worker_node_modules:/app/node_modules
+    networks:
+      - saas_network
+    depends_on:
+      redis:
+        condition: service_healthy
+
+# ── Named Volumes ───────────────────────────────────────────
 volumes:
-  postgres_data:
+  redis_data:
+  backend_node_modules:
+  backend_app_node_modules:
+  frontend_node_modules:
+  frontend_next_cache:
+  worker_node_modules:
+
+# ── Network ─────────────────────────────────────────────────
+networks:
+  saas_network:
+    driver: bridge

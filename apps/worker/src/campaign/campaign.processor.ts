@@ -1,11 +1,11 @@
 import { Processor, WorkerHost, OnWorkerEvent } from '@nestjs/bullmq';
 import { Job } from 'bullmq';
 import { Injectable, Logger } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, In, IsNull } from 'typeorm';
-import { Campaign } from '../entities/campaign.entity';
-import { CampaignItem } from '../entities/campaign-item.entity';
-import { Lead } from '../entities/lead.entity';
+import { InjectModel } from '@nestjs/mongoose';
+import { Model } from 'mongoose';
+import { Campaign, CampaignDocument } from '../entities/campaign.entity';
+import { CampaignItem, CampaignItemDocument } from '../entities/campaign-item.entity';
+import { Lead, LeadDocument } from '../entities/lead.entity';
 import { CampaignStatus } from '@shared/enums/campaign-status.enum';
 import { CampaignItemStatus } from '@shared/enums/campaign-item-status.enum';
 import { CampaignModuleType } from '@shared/enums/campaign-module-type.enum';
@@ -28,11 +28,9 @@ interface CampaignJobData {
 }
 
 const MAX_CONCURRENT_CALLS_PER_TENANT = 2;
-const EMAIL_DELAY_MS = 5000; // 5 seconds between each email
+const EMAIL_DELAY_MS = 5000;
 
-@Processor('campaign-execution', {
-  concurrency: 3,
-})
+@Processor('campaign-execution', { concurrency: 3 })
 @Injectable()
 export class CampaignProcessor extends WorkerHost {
   private readonly logger = new Logger(CampaignProcessor.name);
@@ -42,19 +40,17 @@ export class CampaignProcessor extends WorkerHost {
   private readonly researchAgent: ResearchAgent;
 
   constructor(
-    @InjectRepository(Campaign)
-    private campaignRepository: Repository<Campaign>,
-    @InjectRepository(CampaignItem)
-    private campaignItemRepository: Repository<CampaignItem>,
-    @InjectRepository(Lead)
-    private leadRepository: Repository<Lead>,
+    @InjectModel(Campaign.name)
+    private campaignModel: Model<CampaignDocument>,
+    @InjectModel(CampaignItem.name)
+    private campaignItemModel: Model<CampaignItemDocument>,
+    @InjectModel(Lead.name)
+    private leadModel: Model<LeadDocument>,
   ) {
     super();
     this.aiCallClient = new AICallClient();
     this.emailClient = new EmailClient();
     this.groqEmailService = new GroqEmailService();
-
-    // In a full DI setup, these would be injected. We manually instantiate here for simplicity as the worker is standalone.
     const cheerioScraper = new CheerioScraperService();
     const searchAggregator = new SearchAggregatorService();
     this.researchAgent = new ResearchAgent(cheerioScraper, searchAggregator);
@@ -67,28 +63,19 @@ export class CampaignProcessor extends WorkerHost {
   async process(job: Job<CampaignJobData>): Promise<void> {
     const { campaignId, tenantId } = job.data;
 
-    const campaign = await this.campaignRepository.findOne({
-      where: { id: campaignId, tenantId, deletedAt: IsNull() },
-    });
+    const campaign = await this.campaignModel
+      .findOne({ _id: campaignId, tenantId, deletedAt: null })
+      .lean<Campaign>();
 
-    if (!campaign) {
-      return;
-    }
+    if (!campaign) return;
 
     if (campaign.status === CampaignStatus.READY) {
-      const updateResult = await this.campaignRepository
-        .createQueryBuilder()
-        .update(Campaign)
-        .set({ status: CampaignStatus.RUNNING })
-        .where('id = :campaignId', { campaignId })
-        .andWhere('tenantId = :tenantId', { tenantId })
-        .andWhere('status = :status', { status: CampaignStatus.READY })
-        .andWhere('deletedAt IS NULL')
-        .execute();
-
-      if (updateResult.affected === 0) {
-        return;
-      }
+      // Atomic: READY → RUNNING
+      const updated = await this.campaignModel.findOneAndUpdate(
+        { _id: campaignId, tenantId, status: CampaignStatus.READY, deletedAt: null },
+        { status: CampaignStatus.RUNNING },
+      );
+      if (!updated) return;
     } else if (campaign.status !== CampaignStatus.RUNNING) {
       return;
     }
@@ -97,121 +84,92 @@ export class CampaignProcessor extends WorkerHost {
     let hasMore = true;
 
     while (hasMore) {
-      const currentProcessingCount = await this.campaignItemRepository.count({
-        where: {
-          tenantId,
-          status: CampaignItemStatus.PROCESSING,
-        },
+      const currentProcessingCount = await this.campaignItemModel.countDocuments({
+        tenantId,
+        status: CampaignItemStatus.PROCESSING,
       });
 
       const remainingSlots = MAX_CONCURRENT_CALLS_PER_TENANT - currentProcessingCount;
-
-      if (remainingSlots <= 0) {
-        hasMore = false;
-        break;
-      }
+      if (remainingSlots <= 0) { hasMore = false; break; }
 
       const fetchLimit = Math.min(BATCH_SIZE, remainingSlots);
 
-      const pendingItemIds = await this.campaignItemRepository
-        .createQueryBuilder('item')
-        .select('item.id', 'id')
-        .where('item.tenantId = :tenantId', { tenantId })
-        .andWhere('item.campaignId = :campaignId', { campaignId })
-        .andWhere('item.status = :status', { status: CampaignItemStatus.PENDING })
-        .orderBy('item.createdAt', 'ASC')
+      // Fetch pending item IDs
+      const pendingItems = await this.campaignItemModel
+        .find({ tenantId, campaignId, status: CampaignItemStatus.PENDING })
+        .select('_id')
+        .sort({ createdAt: 1 })
         .limit(fetchLimit)
-        .getRawMany();
+        .lean<CampaignItem[]>();
 
-      if (pendingItemIds.length === 0) {
-        hasMore = false;
-        break;
-      }
+      if (pendingItems.length === 0) { hasMore = false; break; }
 
-      const itemIds = pendingItemIds.map((row: any) => row.id);
+      const itemIds = pendingItems.map((item: any) => item._id);
 
-      const lockResult = await this.campaignItemRepository
-        .createQueryBuilder()
-        .update(CampaignItem)
-        .set({
+      // Atomic lock: PENDING → PROCESSING
+      const lockResult = await this.campaignItemModel.updateMany(
+        { _id: { $in: itemIds }, tenantId, campaignId, status: CampaignItemStatus.PENDING },
+        {
           status: CampaignItemStatus.PROCESSING,
-          attemptCount: () => 'attemptCount + 1',
+          $inc: { attemptCount: 1 },
           lastAttemptAt: new Date(),
-        })
-        .where('id IN (:...itemIds)', { itemIds })
-        .andWhere('tenantId = :tenantId', { tenantId })
-        .andWhere('campaignId = :campaignId', { campaignId })
-        .andWhere('status = :status', { status: CampaignItemStatus.PENDING })
-        .execute();
-
-      if (lockResult.affected === 0) {
-        continue;
-      }
-
-      const lockedItems = await this.campaignItemRepository.find({
-        where: {
-          id: In(itemIds),
-          tenantId,
-          campaignId,
-          status: CampaignItemStatus.PROCESSING,
         },
-      });
+      );
+
+      if (lockResult.modifiedCount === 0) continue;
+
+      const lockedItems = await this.campaignItemModel
+        .find({ _id: { $in: itemIds }, tenantId, campaignId, status: CampaignItemStatus.PROCESSING })
+        .lean<CampaignItem[]>();
 
       let failureCount = 0;
       let successCount = 0;
 
       for (let i = 0; i < lockedItems.length; i++) {
         const item = lockedItems[i];
+        const itemId = (item as any)._id;
         try {
-          const lead = await this.leadRepository.findOne({
-            where: { id: item.leadId, tenantId, deletedAt: IsNull() },
-          });
+          const lead = await this.leadModel
+            .findOne({ _id: item.leadId, tenantId, deletedAt: null })
+            .lean<Lead>();
 
           let externalRefId: string | null = null;
 
-          if (!lead) {
-            throw new Error('Lead not found in database');
-          }
+          if (!lead) throw new Error('Lead not found in database');
 
           if (campaign.moduleType === CampaignModuleType.AI_CALL) {
-            // ─── AI CALL BRANCH ───
-            if (!lead.phone) {
-              throw new Error('Lead phone number is required for AI calls');
-            }
+            if (!lead.phone) throw new Error('Lead phone number is required for AI calls');
 
-            this.logger.log(`📞 [VAPI] Dispatching call to ${lead.phone} for Lead ${lead.id}...`);
+            this.logger.log(`📞 [VAPI] Dispatching call to ${lead.phone} for Lead ${itemId}...`);
             const result = await this.aiCallClient.initiateCall({
               phone: lead.phone,
               contactName: lead.contactName || undefined,
               companyName: lead.companyName || undefined,
               customPrompt: campaign.customPrompt || undefined,
             });
-            this.logger.log(`✅ [VAPI] Call dispatched successfully. Call ID: ${result.callId}`);
+            this.logger.log(`✅ [VAPI] Call dispatched. Call ID: ${result.callId}`);
             externalRefId = result.callId;
 
           } else if (campaign.moduleType === CampaignModuleType.EMAIL) {
-            // ─── EMAIL BRANCH (AI-Generated) ───
             if (!lead.email) {
-              this.logger.warn(`Skipping lead ${lead.id} (${lead.companyName}) — no email address`);
-              await this.campaignItemRepository.update(
-                { id: item.id, tenantId },
-                { status: CampaignItemStatus.FAILED, lastAttemptAt: new Date() },
-              );
+              this.logger.warn(`Skipping lead ${itemId} (${lead.companyName}) — no email`);
+              await this.campaignItemModel.findByIdAndUpdate(itemId, {
+                status: CampaignItemStatus.FAILED,
+                lastAttemptAt: new Date(),
+              });
               failureCount++;
               continue;
             }
 
             const emailConfig = campaign.emailConfig as any;
 
-            // ─── AGENT 1: THE RESEARCHER ───
             let companyProfile = null;
             if (lead.website) {
-              this.logger.log(`🕵️ [Pipeline] Agent 1 -> Researching ${lead.companyName} at ${lead.website}`);
+              this.logger.log(`🕵️ [Pipeline] Researching ${lead.companyName} at ${lead.website}`);
               companyProfile = await this.researchAgent.investigate(lead.website, lead.companyName || 'Unknown');
             }
 
-            // ─── AGENT 2: THE COPYWRITER ───
-            this.logger.log(`✍️ [Pipeline] Agent 2 -> Drafting hyper-personalized email for ${lead.email}`);
+            this.logger.log(`✍️ [Pipeline] Drafting email for ${lead.email}`);
             const generated = await this.groqEmailService.generateEmail({
               companyName: lead.companyName || 'your company',
               contactName: lead.contactName || undefined,
@@ -225,11 +183,10 @@ export class CampaignProcessor extends WorkerHost {
               ctaText: emailConfig?.ctaText || 'Would love to connect.',
               ctaLink: emailConfig?.ctaLink || undefined,
               tone: emailConfig?.tone || 'PROFESSIONAL',
-              companyProfile: companyProfile, // Injected context
+              companyProfile,
             });
 
             this.logger.log(`📧 [Pipeline] Dispatching email to ${lead.email} | Subject: "${generated.subject}"`);
-
             const result = await this.emailClient.sendEmail({
               to: lead.email,
               subject: generated.subject,
@@ -238,90 +195,69 @@ export class CampaignProcessor extends WorkerHost {
             });
             externalRefId = result.messageId;
 
-            // 5-second delay between emails to avoid spam triggers
             if (i < lockedItems.length - 1) {
               this.logger.debug(`Waiting ${EMAIL_DELAY_MS / 1000}s before next email...`);
               await this.sleep(EMAIL_DELAY_MS);
             }
-
           } else {
             throw new Error(`Unsupported module type: ${campaign.moduleType}`);
           }
 
-          // Mark as success
-          await this.campaignItemRepository.update(
-            { id: item.id, tenantId },
-            {
-              status: CampaignItemStatus.SUCCESS,
-              externalRefId,
-              lastAttemptAt: new Date(),
-            },
-          );
+          // Mark success
+          await this.campaignItemModel.findByIdAndUpdate(itemId, {
+            status: CampaignItemStatus.SUCCESS,
+            externalRefId,
+            lastAttemptAt: new Date(),
+          });
           successCount++;
 
-          // Emit progress
+          // Emit progress via Redis pub/sub
+          const freshCampaign = await this.campaignModel.findById(campaignId).lean<Campaign>();
           await redisPublisher.publish('tenant-events', JSON.stringify({
             tenantId,
             event: 'campaign.progress',
             data: {
               campaignId,
-              processed: campaign.processedItems + successCount + failureCount,
+              processed: freshCampaign ? freshCampaign.processedItems + successCount + failureCount : 0,
               total: campaign.totalItems,
               lastLead: lead.companyName,
             },
           }));
 
         } catch (error: any) {
-          this.logger.error(`Item ${item.id} failed: ${error.message}`);
+          this.logger.error(`Item ${itemId} failed: ${error.message}`);
+          if (error.stack) this.logger.error(`[Stack] ${error.stack}`);
 
-          if (error.response?.data) {
-            this.logger.error(`[VAPI Response] ${JSON.stringify(error.response.data)}`);
-          } else if (error.stack) {
-            this.logger.error(`[Stack Trace] ${error.stack}`);
-          }
-
-          await this.campaignItemRepository.update(
-            { id: item.id, tenantId },
-            { status: CampaignItemStatus.FAILED },
-          );
+          await this.campaignItemModel.findByIdAndUpdate(itemId, {
+            status: CampaignItemStatus.FAILED,
+          });
           failureCount++;
         }
       }
 
-      // Update campaign counters
+      // Update campaign counters atomically
       if (successCount > 0 || failureCount > 0) {
-        await this.campaignRepository
-          .createQueryBuilder()
-          .update(Campaign)
-          .set({
-            processedItems: () => `"processedItems" + ${successCount + failureCount}`,
-            successCount: () => `"successCount" + ${successCount}`,
-            failureCount: () => `"failureCount" + ${failureCount}`,
-          })
-          .where('id = :campaignId', { campaignId })
-          .andWhere('tenantId = :tenantId', { tenantId })
-          .execute();
+        await this.campaignModel.findByIdAndUpdate(campaignId, {
+          $inc: {
+            processedItems: successCount + failureCount,
+            successCount,
+            failureCount,
+          },
+        });
       }
     }
 
-    // Fetch up-to-date campaign stats to determine final status
-    const updatedCampaign = await this.campaignRepository.findOne({
-      where: { id: campaignId, tenantId }
-    });
-
+    // Fetch final stats and determine completion status
+    const updatedCampaign = await this.campaignModel.findById(campaignId).lean<Campaign>();
     const finalStatus = updatedCampaign && updatedCampaign.failureCount > 0
       ? CampaignStatus.FAILED
       : CampaignStatus.COMPLETED;
 
-    // Mark campaign with final status
-    await this.campaignRepository
-      .createQueryBuilder()
-      .update(Campaign)
-      .set({ status: finalStatus })
-      .where('id = :campaignId', { campaignId })
-      .andWhere('tenantId = :tenantId', { tenantId })
-      .andWhere('status = :status', { status: CampaignStatus.RUNNING })
-      .execute();
+    // Atomic: RUNNING → final status
+    await this.campaignModel.findOneAndUpdate(
+      { _id: campaignId, tenantId, status: CampaignStatus.RUNNING },
+      { status: finalStatus },
+    );
   }
 
   @OnWorkerEvent('completed')
@@ -330,7 +266,7 @@ export class CampaignProcessor extends WorkerHost {
     await redisPublisher.publish('tenant-events', JSON.stringify({
       tenantId: job.data.tenantId,
       event: 'campaign.completed',
-      data: { jobId: job.id, campaignId: job.data.campaignId }
+      data: { jobId: job.id, campaignId: job.data.campaignId },
     }));
   }
 
@@ -340,7 +276,7 @@ export class CampaignProcessor extends WorkerHost {
     await redisPublisher.publish('tenant-events', JSON.stringify({
       tenantId: job.data.tenantId,
       event: 'campaign.failed',
-      data: { jobId: job.id, campaignId: job.data.campaignId, error: error.message }
+      data: { jobId: job.id, campaignId: job.data.campaignId, error: error.message },
     }));
   }
 }

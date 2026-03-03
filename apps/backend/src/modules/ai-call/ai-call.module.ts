@@ -1,8 +1,9 @@
 import { Module } from '@nestjs/common';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { CampaignItem } from '../campaigns/campaign-item.entity';
-import { Campaign } from '../campaigns/campaign.entity';
-import { Lead } from '../leads/lead.entity';
+import { MongooseModule } from '@nestjs/mongoose';
+import { BullModule } from '@nestjs/bullmq';
+import { CampaignItem, CampaignItemSchema } from '../campaigns/campaign-item.entity';
+import { Campaign, CampaignSchema } from '../campaigns/campaign.entity';
+import { Lead, LeadSchema } from '../leads/lead.entity';
 import { AICallService } from './ai-call.service';
 import { WebhookService } from './webhook.service';
 import { AICallController } from './ai-call.controller';
@@ -11,7 +12,11 @@ import { QuotaModule } from '../quota/quota.module';
 
 @Module({
   imports: [
-    TypeOrmModule.forFeature([CampaignItem, Campaign, Lead]),
+    MongooseModule.forFeature([
+      { name: CampaignItem.name, schema: CampaignItemSchema },
+      { name: Campaign.name, schema: CampaignSchema },
+      { name: Lead.name, schema: LeadSchema },
+    ]),
     QuotaModule,
   ],
   controllers: [AICallController, WebhookController],

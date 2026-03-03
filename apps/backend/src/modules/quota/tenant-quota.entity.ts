@@ -1,42 +1,42 @@
-import {
-  Entity,
-  PrimaryGeneratedColumn,
-  Column,
-  CreateDateColumn,
-  UpdateDateColumn,
-  Index,
-  Unique,
-} from 'typeorm';
+import { Prop, Schema, SchemaFactory } from '@nestjs/mongoose';
+import { Document } from 'mongoose';
+import { v4 as uuidv4 } from 'uuid';
 import { CampaignModuleType } from '@shared/enums/campaign-module-type.enum';
 
-@Entity('tenant_quotas')
-@Unique(['tenantId', 'moduleType'])
-@Index(['tenantId'])
-export class TenantQuota {
-  @PrimaryGeneratedColumn('uuid')
-  id: string;
+export type TenantQuotaDocument = TenantQuota & Document;
 
-  @Column('uuid')
+@Schema({ timestamps: true, collection: 'tenant_quotas' })
+export class TenantQuota {
+  @Prop({ type: String, default: uuidv4 })
+  _id: string;
+
+  @Prop({ type: String, required: true, index: true })
   tenantId: string;
 
-  @Column({
-    type: 'enum',
-    enum: CampaignModuleType,
-  })
+  @Prop({ type: String, enum: CampaignModuleType, required: true })
   moduleType: CampaignModuleType;
 
-  @Column('integer')
+  @Prop({ required: true })
   monthlyLimit: number;
 
-  @Column('integer', { default: 0 })
+  @Prop({ default: 0 })
   usedThisMonth: number;
 
-  @Column('timestamp')
+  @Prop({ type: Date, required: true })
   resetAt: Date;
 
-  @CreateDateColumn()
+  id: string;
   createdAt: Date;
-
-  @UpdateDateColumn()
   updatedAt: Date;
 }
+
+export const TenantQuotaSchema = SchemaFactory.createForClass(TenantQuota);
+
+// Compound unique: one quota per tenant per module
+TenantQuotaSchema.index({ tenantId: 1, moduleType: 1 }, { unique: true });
+
+TenantQuotaSchema.virtual('id').get(function () {
+  return this._id;
+});
+TenantQuotaSchema.set('toJSON', { virtuals: true });
+TenantQuotaSchema.set('toObject', { virtuals: true });
